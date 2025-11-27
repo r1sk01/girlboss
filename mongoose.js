@@ -18,7 +18,6 @@ function exportmodels(mongoosecon=mongoosefcon) {
     if (mongoose.models.Poll) delete mongoose.models.Poll;
     if (mongoose.models.FeatureReq) delete mongoose.models.FeatureReq;
     if (mongoose.models.Webhook) delete mongoose.models.Webhook;
-    if (mongoose.models.AE2Token) delete mongoose.models.AE2Token;
     if (mongoose.models.State) delete mongoose.models.State;
     if (mongoose.models.SSOProvider) delete mongoose.models.SSOProvider;
     const userSchema = new mongoose.Schema({
@@ -49,10 +48,6 @@ function exportmodels(mongoosecon=mongoosefcon) {
         _id: String,
         userid: String,
     });
-    const ae2tokenSchema = new mongoose.Schema({
-        _id: String,
-        userid: String,
-    });
     const stateSchema = new mongoose.Schema({
         _id: String,
         enabled: Boolean,
@@ -76,9 +71,6 @@ function exportmodels(mongoosecon=mongoosefcon) {
     mongoose.model('Webhook', webhookSchema);
     mongoose.model('Webhook').createIndexes({ _id: 1 }, { unique: true });
     mongoose.model('Webhook').createIndexes({ userid: 1 }, { unique: true });
-    mongoose.model('AE2Token', ae2tokenSchema);
-    mongoose.model('AE2Token').createIndexes({ _id: 1 }, { unique: true });
-    mongoose.model('AE2Token').createIndexes({ userid: 1 }, { unique: true });
     mongoose.model('State', stateSchema);
     mongoose.model('State').createIndexes({ _id: 1 }, { unique: true });
     mongoose.model('SSOProvider', ssoproviderSchema);
