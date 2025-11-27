@@ -1,47 +1,68 @@
-import fs from 'fs';
-import { parse as parseJsonc } from 'jsonc-parser';
-import os from 'os';
-import net from 'net';
-import axios from 'axios';
-
-const mc = new Map();
-const gt = () => Date.now();
-async function hotreloadable(mod) {
-    const timestamp = gt();
-    const cm = mc.get(mod);
-    const sr = !cm || (timestamp - cm.timestamp > 1000);
-    if (sr) {
-        try {
-            const module = await import(`${mod}?t=${timestamp}`);
-            mc.set(mod, { module, timestamp });
-            return module;
-        } catch (error) {
-            const module = await import(mod);
-            mc.set(mod, { module, timestamp });
-            return module;
-        }
-    }
-    return cm.module;
-}
-
-const signalhandler = await hotreloadable('./signalhandler.js');
-const mongoosemodule = await hotreloadable('./mongoose.js');
-const { sendresponse, sendmessage, getcontacts } = signalhandler;
-const { exportmodels } = mongoosemodule;
-const mongoose = exportmodels();
-
-let config = parseJsonc(fs.readFileSync('config.jsonc', 'utf8'));
-const prefix = config.prefix || '-';
-const botname = config.botname || 'TritiumBot';
-const phonenumber = config.phonenumber;
-const managedaccount = config.managedaccount;
-config = undefined;
-
-function escapereg(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+import fs from 'fs'
+import { parse as parseJsonc } from 'jsonc-parser'
+import os from 'os'
+import {
+    mongoose,
+    prefix,
+    botname,
+    phonenumber,
+    managedaccount,
+    sendresponse,
+    sendmessage,
+    getcontacts,
+    escapereg,
+    hotreloadable,
+    parsecommand
+} from './modulecontext.js'
 
 const ic = /[\u00AD\u200B\u200C\u200D\u2060\uFEFF\uFE00-\uFE0F]/gu;
+
+let modules = [];
+
+async function loadmodules() {
+    const mods = [];
+    let entries = [];
+    try {
+        entries = fs.readdirSync('./commands', { withFileTypes: true });
+    } catch (e) {
+        entries = [];
+    }
+    for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        let spec = null;
+        if (entry.isFile() && entry.name.endsWith('.js')) {
+            spec = `./commands/${entry.name}`;
+        } else if (entry.isDirectory() && fs.existsSync(`./commands/${entry.name}/index.js`)) {
+            spec = `./commands/${entry.name}/index.js`;
+        }
+        if (!spec) continue;
+        try {
+            const mod = await hotreloadable(spec);
+            const def = mod && mod.default ? mod.default : null;
+            if (def && def.section && def.commands) mods.push(def);
+        } catch (e) {
+            console.log("failed to load " + spec + ": " + e);
+        }
+    }
+    modules = mods;
+}
+
+let modulesloaded = false;
+async function ensuremodules() {
+    if (!modulesloaded) {
+        await loadmodules();
+        modulesloaded = true;
+    }
+}
+
+function findmodulecommand(cmd) {
+    for (const mod of modules) {
+        if (mod && mod.commands && Object.prototype.hasOwnProperty.call(mod.commands, cmd)) {
+            return { mod, command: mod.commands[cmd] };
+        }
+    }
+    return null;
+}
 
 const guestcommands = {
     "register": {
@@ -58,7 +79,7 @@ const guestcommands = {
                     const contact = await getcontacts(phonenumber, envelope.sourceUuid);
                     const profile = contact.profile;
                     let name;
-                    if (profile && profile.givenName && profile.givenName !== null && profile.familyName && profile.familyName !== null) {
+                    if (profile && profile.givenName && profile.familyName) {
                         name = profile.givenName + (profile.familyName ? ` ${profile.familyName}` : '');
                     } else {
                         name = 'Unknown';
@@ -108,25 +129,26 @@ const usercommands = {
         execute: async (envelope, message) => {
             try {
                 const User = mongoose.model('User');
-                const user = await User.findOne({ userid: envelope.sourceUuid });
+                const user = await User.findOne({userid: envelope.sourceUuid});
                 if (!user.properties) {
                     user.properties = {};
                 }
-                if (new RegExp(`^${escapereg(prefix)}subscribe\\s+true$`, 'i').test(message.trim())) {
+                const match = parsecommand(message);
+                if (!match[1] || !match[1].trim()) {
+                    sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
+                } else if (match[1].trim() === "true") {
                     user.properties.subscribed = true;
                     user.markModified('properties');
                     await user.save();
                     await sendresponse(`You are now subscribed to ${botname} broadcasts $MENTIONUSER!`, envelope, `${prefix}subscribe true`, false);
-                    return;
-                }
-                if (new RegExp(`^${escapereg(prefix)}subscribe\\s+false$`, 'i').test(message.trim())) {
+                } else if (match[1].trim() === "false") {
                     user.properties.subscribed = false;
                     user.markModified('properties');
                     await user.save();
                     await sendresponse(`You are now unsubscribed from ${botname} broadcasts $MENTIONUSER!`, envelope, `${prefix}subscribe false`, false);
-                    return;
+                } else {
+                    sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
                 }
-                sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
             } catch (err) {
                 await sendresponse('Unable to connect to database, is MongoDB running?', envelope, `${prefix}subscribe`, true);
             }
@@ -175,7 +197,7 @@ const usercommands = {
                 if (!user.properties) {
                     user.properties = {};
                 }
-                const match = message.match(new RegExp(`^${escapereg(prefix)}nick\\s+(.+)$`, 'i'));
+                const match = parsecommand(message);
                 if (!match || !match[1] || match[1].trim().length === 0) {
                     await sendresponse('Please provide a valid nickname.', envelope, `${prefix}nick`, true);
                     return;
@@ -245,7 +267,7 @@ const usercommands = {
                 if (!user.properties) {
                     user.properties = {};
                 }
-                const match = message.match(new RegExp(`^${escapereg(prefix)}featurereq\\s+(.+)$`, 'i'));
+                const match = parsecommand(message);
                 if (!match || !match[1] || match[1].trim().length === 0) {
                     await sendresponse('Please provide a valid feature request after the command.', envelope, `${prefix}featurereq`, true);
                     return;
@@ -269,48 +291,75 @@ const usercommands = {
     },
     "poll": {
         description: "View and vote on polls",
-        arguments: ['pollid', 'optionid'],
+        arguments: ['pollid/index', 'optionid'],
         execute: async (envelope, message) => {
             try {
                 const Poll = mongoose.model('Poll');
-                const match = message.match(new RegExp(`^${escapereg(prefix)}poll(?:\\s+(\\S+)(?:\\s+(\\S+))?)?$`, 'i'));
+                const match = parsecommand(message);
                 if (!match || !match[1]) {
                     const polls = await Poll.find({});
                     if (polls.length === 0) {
                         await sendresponse('No polls are currently running.', envelope, `${prefix}poll`, true);
                         return;
                     }
-                    let pm = 'Running polls:\n';
-                    polls.forEach(poll => {
-                        pm += `- ID: ${poll.pollid}\n  Question: ${poll.question}\n\n`;
+                    let pm = 'Running polls:\n\n';
+                    polls.forEach((poll, index) => {
+                        const totalvotes = poll.votes ? poll.votes.reduce((sum, count) => sum + count, 0) : 0;
+                        const hasvoted = poll.voters && poll.voters.includes(envelope.sourceUuid);
+                        pm += `[${index}] ID: ${poll.pollid}\n`;
+                        pm += `    Question: ${poll.question}\n`;
+                        pm += `    Total votes: ${totalvotes}\n`;
+                        pm += `    Has voted?: ${hasvoted ? 'true' : 'false'}\n\n`;
                     });
+                    pm += `Use "-poll [index/pollid]" to view details or "-poll [index/pollid] [option]" to vote.\n`;
+                    pm += `Example: "-poll 0" for first poll, "-poll 1 2" to vote option 2 on second poll.`;
                     await sendresponse(pm.trim(), envelope, `${prefix}poll`, false);
                     return;
                 }
-                const pollid = match[1];
-                const poll = await Poll.findOne({ pollid: pollid });
-                if (!poll) {
-                    await sendresponse(`Poll with ID ${pollid} not found.`, envelope, `${prefix}poll`, true);
-                    return;
+                const pollidoridx = match[1];
+                let poll;
+                if (/^\d+$/.test(pollidoridx)) {
+                    const index = parseInt(pollidoridx);
+                    const polls = await Poll.find({});
+                    if (index >= 0 && index < polls.length) {
+                        poll = polls[index];
+                    } else {
+                        await sendresponse(`Poll index ${index} not found. Use "-poll" to see available polls.`, envelope, `${prefix}poll`, true);
+                        return;
+                    }
+                } else {
+                    poll = await Poll.findOne({ pollid: pollidoridx });
+                    if (!poll) {
+                        await sendresponse(`Poll with ID ${pollidoridx} not found. Use "-poll" to see available polls.`, envelope, `${prefix}poll`, true);
+                        return;
+                    }
                 }
                 if (!match[2]) {
                     const uhv = poll.voters && poll.voters.includes(envelope.sourceUuid);
                     const tv = poll.votes ? poll.votes.reduce((sum, count) => sum + count, 0) : 0;
-                    let pm = `Poll ID: ${poll.pollid}\nQuestion: ${poll.question}\nOptions:\n`;
+                    let pollindex = null;
+                    if (/^\d+$/.test(pollidoridx)) {
+                        pollindex = pollidoridx;
+                    } else {
+                        const allpolls = await Poll.find({});
+                        pollindex = allpolls.findIndex(p => p.pollid === poll.pollid);
+                    }
+                    let pm = `Poll [${pollindex}] ID: ${poll.pollid}\nQuestion: ${poll.question}\n\nOptions:\n`;
                     if (uhv) {
                         poll.options.forEach((option, index) => {
-                            const voteCount = poll.votes ? poll.votes[index] || 0 : 0;
-                            pm += `${index + 1}. ${option} (${voteCount} votes)\n`;
+                            const votecount = poll.votes ? poll.votes[index] || 0 : 0;
+                            pm += `${index + 1}. ${option} (${votecount} votes)\n`;
                         });
-                    }
-                    if (!poll.votes || !Array.isArray(poll.votes)) {
-                        return;
                     } else {
                         poll.options.forEach((option, index) => {
                             pm += `${index + 1}. ${option}\n`;
                         });
                     }
                     pm += `\nTotal votes: ${tv}`;
+                    pm += `\nYou have voted: ${uhv ? 'Yes' : 'No'}`;
+                    if (!uhv) {
+                        pm += `\n\nUse "-poll ${pollindex} [option number]" to vote (or "-poll ${poll.pollid} [option number]").`;
+                    }
                     await sendresponse(pm.trim(), envelope, `${prefix}poll`, false);
                     return;
                 }
@@ -343,9 +392,9 @@ const usercommands = {
         arguments: ['module', 'enable/disable'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}module(?:\\s+(\\S+)(?:\\s+(enable|disable))?)?$`, 'i'));
+                const match = parsecommand(message);
                 if (!match) {
-                    await sendresponse('Invalid arguments. Use "-module [module] [enable/disable]" to enable or disable a module.', envelope, `${prefix}module`, true);
+                    await sendresponse('Invalid arguments. Use "-module [module] [enable/disable] [confirm: true/false]" to enable or disable a module.', envelope, `${prefix}module`, true);
                     return;
                 }
                 const User = mongoose.model('User');
@@ -400,6 +449,7 @@ const usercommands = {
                 }
                 const module = match[1].toLowerCase();
                 const action = match[2].toLowerCase();
+                const confirm = match[3] ? match[3].toLowerCase() : null;
                 if (!user.properties) {
                     user.properties = {};
                 }
@@ -410,18 +460,22 @@ const usercommands = {
                     await sendresponse(`Module "${module}" doesn't appear to exist.`, envelope, `${prefix}module`, true);
                     return;
                 }
-                if (action === 'enable') {
+                if (action === 'enable' || action === 'on' || action === 'true') {
                     if (user.properties.tags.includes(module)) {
                         await sendresponse(`Module "${module}" is already enabled.`, envelope, `${prefix}module`, true);
                         return;
                     }
                     const mod = modules.find(m => m.section === module);
-                    if (mod && mod.execute) {
+                    if (mod && mod.execute && (!confirm || confirm !== 'true')) {
+                        await sendresponse(`WARNING: Module ${module} has a setup script attached to the module!\nPlease run "-module ${module} enable true" to confirm that you want to enable this module and execute the setup script.\nScript:\n${mod.execute.toString()}`, envelope, `${prefix}module`, true);
+                        return;
+                    } else if (mod && mod.execute && confirm && confirm === 'true') {
+                        await sendresponse(`Executing setup script for module ${module}...`, envelope, `${prefix}module`, false);
                         await mod.execute(user);
                     }
                     user.properties.tags = [...(user.properties.tags || []), `${module}`];
                     await sendresponse(`Module "${module}" has been enabled.`, envelope, `${prefix}module`, false);
-                } else if (action === 'disable') {
+                } else if (action === 'disable' || action === 'off' || action === 'false') {
                     if (!user.properties.tags.includes(module)) {
                         await sendresponse(`Module "${module}" is not enabled.`, envelope, `${prefix}module`, true);
                         return;
@@ -439,616 +493,46 @@ const usercommands = {
                 await sendresponse('Failed to manage modules. Please try again later.', envelope, `${prefix}module`, true);
             }
         }
-    }
-};
-
-const ecocommands = {
-    "wallet": {
-        description: "Get your wallet balance",
+    },
+    "requestmydata": {
+        description: `Request all data stored about you by ${botname}`,
         arguments: null,
         execute: async (envelope, message) => {
             try {
                 const User = mongoose.model('User');
                 const user = await User.findOne({ userid: envelope.sourceUuid });
-                if (!user.properties || !user.properties.eco) {
-                    user.properties.eco = { balance: 0 };
-                    user.markModified('properties');
-                    await user.save();
-                }
-                let bal = user.properties.eco.balance || 0;
-                if (typeof bal === 'number') {
-                    bal = Math.floor(bal);
-                    user.properties.eco.balance = bal;
-                    user.markModified('properties');
-                    await user.save();
-                }
-                await sendresponse(`Your wallet balance is: E${bal}`, envelope, `${prefix}wallet`, false);
-            } catch (err) {
-                await sendresponse('Failed to retrieve your wallet balance. Please try again later.', envelope, `${prefix}wallet`, true);
-            }
-        }
-    },
-    "daily": {
-        description: "Claim your daily reward",
-        arguments: null,
-        execute: async (envelope, message) => {
-            try {
-                const User = mongoose.model('User');
-                const user = await User.findOne({ userid: envelope.sourceUuid });
-                if (!user.properties || !user.properties.eco) {
-                    user.properties.eco = { balance: 0, daily: 0 };
-                    user.markModified('properties');
-                    await user.save();
-                }
-                const ct = Date.now();
-                const daily = user.properties.eco.daily || 0;
-                const cd = 18 * 60 * 60 * 1000;
-                if (ct - daily < cd) {
-                    await sendresponse('You can only claim your daily reward once every 18 hours.', envelope, `${prefix}daily`, true);
+                if (!user) {
+                    await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, `${prefix}requestmydata`, true);
                     return;
                 }
-                const reward = Math.floor(Math.random() * 400) + 100;
-                user.properties.eco.balance += reward;
-                user.properties.eco.balance = Math.floor(user.properties.eco.balance);
-                user.properties.eco.daily = ct;
-                user.markModified('properties');
-                await user.save();
-                await sendresponse(`You have claimed your daily reward of E${reward}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}daily`, false);
-            } catch (err) {
-                await sendresponse('Failed to claim your daily reward. Please try again later.', envelope, `${prefix}daily`, true);
-            }
-        }
-    },
-    "work": {
-        description: "Work to earn money",
-        arguments: null,
-        execute: async (envelope, message) => {
-            try {
-                const User = mongoose.model('User');
-                const user = await User.findOne({ userid: envelope.sourceUuid });
-                if (!user.properties || !user.properties.eco) {
-                    user.properties = user.properties || {};
-                    user.properties.eco = { balance: 0 };
-                    user.markModified('properties');
-                    await user.save();
-                }
-                const cd = 60 * 60 * 1000;
-                const ct = Date.now();
-                const work = user.properties.eco.work || 0;
-                if (ct - work < cd) {
-                    await sendresponse('You can only work once every hour.', envelope, `${prefix}work`, true);
-                    return;
-                }
-                const earnings = Math.floor(Math.random() * 200) + 50;
-                user.properties.eco.balance += earnings;
-                user.properties.eco.balance = Math.floor(user.properties.eco.balance);
-                user.properties.eco.work = ct;
-                user.markModified('properties');
-                await user.save();
-                await sendresponse(`You worked hard and earned E${earnings}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}work`, false);
-            } catch (err) {
-                await sendresponse('Failed to work. Please try again later.', envelope, `${prefix}work`, true);
-            }
-        }
-    },
-    "give": {
-        description: "Give money to another user",
-        arguments: ['user', 'amount'],
-        execute: async (envelope, message) => {
-            try {
-                const User = mongoose.model('User');
-                const match = message.match(new RegExp(`^${escapereg(prefix)}give\\s+(\\S+)\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments. Use "-give [user] [amount]" to give money to another user.', envelope, `${prefix}give`, true);
-                    return;
-                }
-                const tui = match[1];
-                const amount = parseInt(match[2]);
-                if (isNaN(amount) || amount <= 0) {
-                    await sendresponse('Please specify a valid amount to give.', envelope, `${prefix}give`, true);
-                    return;
-                }
-                const user = await User.findOne({ userid: envelope.sourceUuid });
-                if (!user || !user.properties || !user.properties.eco || user.properties.eco.balance < amount) {
-                    await sendresponse('You do not have enough balance to give this amount.', envelope, `${prefix}give`, true);
-                    return;
-                }
-                const tu = await User.findOne({ userid: tui });
-                if (!tu) {
-                    await sendresponse('User not found.', envelope, `${prefix}give`, true);
-                    return;
-                }
-                if (!tu.properties || !tu.properties.eco) {
-                    tu.properties = tu.properties || {};
-                    tu.properties.eco = { balance: 0 };
-                }
-                user.properties.eco.balance -= amount;
-                tu.properties.eco.balance += amount;
-                user.markModified('properties');
-                tu.markModified('properties');
-                await user.save();
-                await tu.save();
-                await sendmessage(`You have received E${amount} from ${user.userid}. Your new balance is E${tu.properties.eco.balance}.`, tui, phonenumber);
-                await sendresponse(`You have given E${amount} to ${tui}. Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}give`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to give money. Please try again later.', envelope, `${prefix}give`, true);
-            }
-        }
-    }
-};
-
-const adminonlycommands = {
-    "proxymsg": {
-        description: "Proxy a message to another user",
-        arguments: ['signalid', 'bot', 'message'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}proxymsg\\s+(\\S+)\\s+(\\S+)\\s+(.+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-proxymsg [signalid] [bot] [message]" to proxy a message to another user.', envelope, `${prefix}proxymsg`, true);
-                    return;
-                }
-                const tui = match[1];
-                const bot = match[2];
-                const proxmsg = match[3];
-                if (!tui || !proxmsg) {
-                    await sendresponse('Invalid arguments.\nUse "-proxymsg [signalid] [bot] [message]" to proxy a message to another user.', envelope, `${prefix}proxymsg`, true);
-                    return;
-                }
-                await sendmessage(proxmsg, tui, (bot === 'true') ? phonenumber : managedaccount);
-                await sendresponse(`Message successfully proxied to ${tui}.\nMessage: ${proxmsg}`, envelope, `${prefix}proxymsg`, false);
-            } catch (err) {
-                await sendresponse('Somehow this command failed. Please try again later.', envelope, `${prefix}proxymsg`, true);
-            }
-        }
-    },
-    "changetags": {
-        description: "Change the tags of a user by their userid",
-        arguments: ['userid', 'tags'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}changetags\\s+(\\S+)\\s+"([^"]+)"$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-changetags [userid] "[tags]"" to set tags for a user.', envelope, `${prefix}changetags`, true);
-                    return;
-                }
-                const tui = match[1];
-                const nt = match[2].split(/\s+/).filter(Boolean);
-                const User = mongoose.model('User');
-                let userobject = await User.findOne({ userid: tui });
-                if (!userobject) {
-                    const nu = new User({
-                        userid: tui,
-                        accesslevel: 0,
-                        properties: { tags: [] },
-                    });
-                    await nu.save();
-                    const cu = await User.findOne({ userid: tui });
-                    userobject = cu;
-                }
-                if (!userobject.properties) userobject.properties = {};
-                userobject.properties.tags = nt;
-                userobject.markModified('properties');
-                await userobject.save();
-                await sendresponse(`Tags for user ${tui} have been updated to: ${nt.join(', ')}`, envelope, `${prefix}changetags`, false);
-            } catch (err) {
-                await sendresponse('Failed to change tags. Please try again later.', envelope, `${prefix}changetags`, true);
-            }
-        }
-    },
-    "getusers": {
-        description: "Get a list of users from the database",
-        arguments: null,
-        execute: async (envelope, message) => {
-            try {
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                if (users.length === 0) {
-                    await sendresponse('No users found in the database.', envelope, `${prefix}getusers`, true);
-                    return;
-                }
-                let contacts;
+                let userObj;
                 try {
-                    contacts = await getcontacts();
-                } catch (err) {
-                    console.error('Failed to retrieve contacts:', err);
-                    await sendresponse('Failed to retrieve contacts. Please check the logs for more information.', envelope, `${prefix}getusers`, true);
-                    return;
+                    userObj = typeof user.toObject === 'function' ? user.toObject() : JSON.parse(JSON.stringify(user));
+                } catch (_) {
+                    userObj = JSON.parse(JSON.stringify(user));
                 }
-                if (!Array.isArray(contacts)) {
-                    console.error('Contacts is not an array:', typeof contacts, contacts);
-                    await sendresponse('Invalid contacts data received. Please check the logs for more information.', envelope, `${prefix}getusers`, true);
-                    return;
+                if (userObj && userObj.properties && Object.prototype.hasOwnProperty.call(userObj.properties, 'authkey')) {
+                    userObj.properties.authkey = 'Ask nova.06 for the way to derive your raw key in the database from the one you receive.';
                 }
-                const ulm = users.map(user => {
-                    let contact;
-                    if (Array.isArray(contacts)) {
-                        contact = contacts.find(c => c.uuid === user.userid);
-                    }
-                    const profile = contact ? contact.profile : {};
-                    const name = profile.givenName + (profile.familyName ? ` ${profile.familyName}` : '');
-                    if (profile.givenName && (!user.username || user.username !== profile.givenName)) {
-                        user.username = profile.givenName + (profile.familyName ? ` ${profile.familyName}` : '');
-                        user.save().catch(err => console.error('Failed to save username:', err));
-                    }
-                    return {
-                        userid: user.userid,
-                        accesslevel: user.accesslevel,
-                        tags: user.properties ? user.properties.tags : [], 
-                        name: name ? name : 'Unknown'
-                    };
-                });
-                let ul = 'Users:\n';
-                ulm.forEach(user => {
-                    ul += `- ${user.userid} (${user.name})${user.accesslevel === 1 ? ' (Admin)' : ''}${user.tags.length > 0 ? ` (Tags: ${user.tags.join(', ')})` : ''}\n`;
-                });
-                await sendresponse(ul.trim(), envelope, `${prefix}getusers`, false);
-            } catch (err) {
-                await sendresponse('Failed to retrieve users. Please try again later.', envelope, `${prefix}getusers`, true);
-            }
-        }
-    },
-    "broadcast": {
-        description: "Send a message to all users",
-        arguments: ['onlysubscribed', 'message'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}broadcast\\s+(\\S+)\\s+([\\s\\S]+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-broadcast [onlysubscribed] [message]" to send a message to all users.', envelope, `${prefix}broadcast`, true);
-                    return;
-                }
-                const onlysubscribed = match[1];
-                const bm = match[2];
-                if (!bm) {
-                    await sendresponse('Invalid arguments.\nUse "-broadcast [onlysubscribed] [message]" to send a message to all users.', envelope, `${prefix}broadcast`, true);
-                    return;
-                }
-                if (onlysubscribed !== 'true' && onlysubscribed !== 'false') {
-                    await sendresponse('Invalid value for onlysubscribed. Use "true" or "false".', envelope, `${prefix}broadcast`, true);
-                    return;
-                }
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                if (users.length === 0) {
-                    await sendresponse('No users found in the database.', envelope, `${prefix}broadcast`, true);
-                    return;
-                }
-                let sc = 0;
-                for (const user of users) {
-                    if (onlysubscribed === 'true' && (!user.properties || !user.properties.subscribed)) {
-                        continue;
-                    }
-                    try {
-                        await sendmessage(bm, user.userid, phonenumber);
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                        sc++;
-                    } catch (err) {
-                        console.error(`Failed to send message to user ${user.userid}:`, err);
-                    }
-                }
-                await sendresponse(`Broadcast message sent to ${sc} users.`, envelope, `${prefix}broadcast`, false);
-            } catch (err) {
-                console.log('Failed to execute broadcast command:', err);
-                await sendresponse('Somehow this command failed. Please try again later.', envelope, `${prefix}broadcast`, true);
-            }
-        }
-    },
-    "delprop": {
-        description: "Delete a property from a user",
-        arguments: ['userid', 'property'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}delprop\\s+(\\S+)\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-delprop [userid] [property]" to delete a property from a user.', envelope, `${prefix}delprop`, true);
-                    return;
-                }
-                const tui = match[1];
-                const property = match[2];
-                const User = mongoose.model('User');
-                let userobject = await User.findOne({ userid: tui });
-                if (!userobject) {
-                    await sendresponse(`User ${tui} not found.`, envelope, `${prefix}delprop`, true);
-                    return;
-                }
-                if (!userobject.properties || !userobject.properties.hasOwnProperty(property)) {
-                    await sendresponse(`Property "${property}" not found for user ${tui}.`, envelope, `${prefix}delprop`, true);
-                    return;
-                }
-                delete userobject.properties[property];
-                userobject.markModified('properties');
-                await userobject.save();
-                await sendresponse(`Property "${property}" deleted for user ${tui}.`, envelope, `${prefix}delprop`, false);
-            } catch (err) {
-                await sendresponse('Failed to delete property. Please try again later.', envelope, `${prefix}delprop`, true);
-            }
-        }
-    },
-    "nukeprop": {
-        description: "Delete property from all users",
-        arguments: ['property'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}nukeprop\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-nukeprop [property]" to delete a property from all users.', envelope, `${prefix}nukeprop`, true);
-                    return;
-                }
-                const property = match[1];
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                if (users.length === 0) {
-                    await sendresponse('No users found in the database.', envelope, `${prefix}nukeprop`, true);
-                    return;
-                }
-                let dc = 0;
-                for (const user of users) {
-                    if (user.properties && user.properties.hasOwnProperty(property)) {
-                        delete user.properties[property];
-                        user.markModified('properties');
-                        await user.save();
-                        dc++;
-                    }
-                }
-                await sendresponse(`Property "${property}" deleted from ${dc} users.`, envelope, `${prefix}nukeprop`, false);
-            } catch (err) {
-                await sendresponse('Failed to delete property from all users. Please try again later.', envelope, `${prefix}nukeprop`, true);
-            }
-        }
-    },
-    "peerprops": {
-        description: "Get properties of a user by their Signal ID",
-        arguments: ['userid'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}peerprops\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-peerprops [userid]" to get properties of a user.', envelope, `${prefix}peerprops`, true);
-                    return;
-                }
-                const tui = match[1];
-                const User = mongoose.model('User');
-                let userobject = await User.findOne({ userid: tui });
-                if (!userobject) {
-                    await sendresponse(`User ${tui} not found.`, envelope, `${prefix}peerprops`, true);
-                    return;
-                }
-                if (!userobject.properties) {
-                    await sendresponse(`No properties found for user ${tui}.`, envelope, `${prefix}peerprops`, true);
-                    return;
-                }
-                let props = '';
-                for (const prop in userobject.properties) {
-                    if (Object.prototype.hasOwnProperty.call(userobject.properties, prop)) {
-                        props += `${prop}: ${JSON.stringify(userobject.properties[prop])}\n`;
-                    }
-                }
-                if (props === '') {
-                    await sendresponse(`No properties found for user ${tui}.`, envelope, `${prefix}peerprops`, true);
-                    return;
-                }
-                await sendresponse(`Properties for user ${tui}:\n${props.trim()}`, envelope, `${prefix}peerprops`, false);
-            } catch (err) {
-                await sendresponse('Failed to retrieve properties. Please try again later.', envelope, `${prefix}peerprops`, true);
-            }
-        }
-    },
-    "jitsi": {
-        description: "Generate a CTC Jitsi link",
-        arguments: null,
-        execute: async (envelope, message) => {
-            try {
-                const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-                const code = Array.from({length: 128}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-                const l = `https://meet.chadthundercock.com/${code}`;
-                await sendresponse(`${l}`, envelope, `${prefix}jitsi`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to generate Jitsi link. Please try again later.', envelope, `${prefix}jitsi`, true);
-            }
-        }
-    },
-    "listfrs": {
-        description: "List all feature requests",
-        arguments: null,
-        execute: async (envelope, message) => {
-            try {
-                const FeatureReq = mongoose.model('FeatureReq');
-                const frs = await FeatureReq.find({});
-                if (frs.length === 0) {
-                    await sendresponse('No feature requests found.', envelope, `${prefix}listfrs`, true);
-                    return;
-                }
-                let frl = 'Feature Requests:\n';
-                frs.forEach(req => {
-                    frl += `- ID: ${req.reqid}\n  User: ${req.userid}\n  Feature: ${req.feature}\n`;
-                });
-                await sendresponse(frl.trim(), envelope, `${prefix}listfrs`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to retrieve feature requests. Please try again later.', envelope, `${prefix}listfrs`, true);
-            }
-        }
-    },
-    "delfr": {
-        description: "Delete a feature request by its ID",
-        arguments: ['reqid', 'reason'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}delfr\\s+(\\S+)(?:\\s+(.+))?$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-delfr [reqid]" to delete a feature request by its ID.', envelope, `${prefix}delfr`, true);
-                    return;
-                }
-                const reqid = match[1];
-                const reason = match[2] || 'No reason provided';
-                const FeatureReq = mongoose.model('FeatureReq');
-                const featurereq = await FeatureReq.findOne({ reqid: reqid });
-                if (!featurereq) {
-                    await sendresponse(`Feature request with ID ${reqid} not found.`, envelope, `${prefix}delfr`, true);
-                    return;
-                }
-                await sendmessage(`Your feature request with ID ${reqid} has been closed.\nReason: ${reason}`, featurereq.userid, phonenumber);
-                await featurereq.deleteOne();
-                await sendresponse(`Feature request with ID ${reqid} has been deleted.`, envelope, `${prefix}delfr`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to delete feature request. Please try again later.', envelope, `${prefix}delfr`, true);
-            }
-        }
-    },
-    "mkpoll": {
-        description: "Create a poll",
-        arguments: ['"question"', '"option1"', '"option2"', '...'],
-        execute: async (envelope, message) => {
-            try {
-                const matches = [...message.matchAll(/"([^"]*)"/g)];
-                if (matches.length < 3) {
-                    await sendresponse('Invalid arguments.\nUse "-mkpoll "question" "option1" "option2" ..." to create a poll.', envelope, `${prefix}mkpoll`, true);
-                    return;
-                }
-                const question = matches[0][1];
-                const options = matches.slice(1).map(match => match[1]);
-                if (options.length < 2) {
-                    await sendresponse('Please provide at least two options for the poll.', envelope, `${prefix}mkpoll`, true);
-                    return;
-                }
-                const Poll = mongoose.model('Poll');
-                const pollid = `poll-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-                const votes = new Array(options.length).fill(0);
-                const poll = new Poll({
-                    pollid: pollid,
-                    question: question,
-                    options: options,
-                    votes: votes
-                });
-                await poll.save();
-                const pm = `Poll created with ID: ${pollid}\nQuestion: ${question}\nOptions:\n${options.map((opt, idx) => `${idx+1}. ${opt}`).join('\n')}`;
-                await sendresponse(pm, envelope, `${prefix}mkpoll`, false);
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                if (users.length === 0) {
-                    await sendresponse('No users found in the database.', envelope, `${prefix}broadcast`, true);
-                    return;
-                }
-                for (const user of users) {
-                    try {
-                        await sendmessage(`New poll created: ${pollid}\nQuestion: ${question}\n\nView the options with "-poll ${pollid}"\nVote an option with "-poll ${pollid} [optionid]"`, user.userid, phonenumber);
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    } catch (err) {
-                        console.error(`Failed to send message to user ${user.userid}:`, err);
-                    }
-                }
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to create poll. Please try again later.', envelope, `${prefix}mkpoll`, true);
-            }
-        }
-    },
-    "closepoll": {
-        description: "Close a poll by its ID",
-        arguments: ['pollid'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}closepoll\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-closepoll [pollid]" to close a poll by its ID.', envelope, `${prefix}closepoll`, true);
-                    return;
-                }
-                const pollid = match[1];
-                const Poll = mongoose.model('Poll');
-                const poll = await Poll.findOne({ pollid: pollid });
-                if (!poll) {
-                    await sendresponse(`Poll with ID ${pollid} not found.`, envelope, `${prefix}closepoll`, true);
-                    return;
-                }
-                let rm = `Poll Results for "${poll.question}":\n\n`;
-                const tv = poll.votes.reduce((sum, count) => sum + count, 0);
-                poll.options.forEach((option, index) => {
-                    const vc = poll.votes[index];
-                    const per = tv > 0 ? Math.round((vc / tv) * 100) : 0;
-                    rm += `${index + 1}. ${option}: ${vc} votes (${per}%)\n`;
-                });
-                if (tv === 0) {
-                    rm += "\nNo votes were cast in this poll.";
-                } else {
-                    rm += `\nTotal votes: ${tv}`;
-                }
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                for (const user of users) {
-                    try {
-                        await sendmessage(`Poll "${pollid}" has been closed.\n\n${rm}`, user.userid, phonenumber);
-                        await new Promise(resolve => setTimeout(resolve, 100));
-                    } catch (err) {
-                        console.error(`Failed to send poll results to user ${user.userid}:`, err);
-                    }
-                }
-                await poll.deleteOne();
-                await sendresponse(`Poll with ID ${pollid} has been closed and deleted.\n\n${rm}`, envelope, `${prefix}closepoll`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to close poll. Please try again later.', envelope, `${prefix}closepoll`, true);
-            }
-        }
-    },
-    "killuser": {
-        description: "Forcefully unregisters a user",
-        arguments: ['userid'],
-        execute: async (envelope, message) => {
-            try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}killuser\\s+(\\S+)$`, 'i'));
-                if (!match) {
-                    await sendresponse('Invalid arguments.\nUse "-killuser [userid]" to unregister a user.', envelope, `${prefix}killuser`, true);
-                    return;
-                }
-                const tui = match[1];
-                const User = mongoose.model('User');
-                const userobject = await User.findOne({ userid: tui });
-                if (!userobject) {
-                    await sendresponse(`User ${tui} not found.`, envelope, `${prefix}killuser`, true);
-                    return;
-                }
-                await userobject.deleteOne();
-                await sendresponse(`User ${tui} has been forcefully unregistered.`, envelope, `${prefix}killuser`, false);
-            } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to unregister user. Please try again later.', envelope, `${prefix}killuser`, true);
-            }
-        }
-    },
-    "migration": {
-        description: "Perform a database migration (set up the migration in this commands execute section first)",
-        arguments: null,
-        execute: async (envelope, message) => {
-            sendresponse('A migration isn\'t set up yet, please set one up in this commands execute section.', envelope, `${prefix}migration`, true); return;
-            try {
-                const User = mongoose.model('User');
-                const users = await User.find({});
-                if (users.length === 0) {
-                    await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
-                    return;
-                }
-                let uc = 0;
-                for (const user of users) {
-                    if (user.properties.eco) {
-                        user.properties.tags = ['eco'];
-                        user.markModified('properties');
-                        await user.save();
-                        uc++;
+                const userData = JSON.stringify(userObj, null, 2);
+                const am = `Hiya $MENTIONUSER!\nHere is all the data I have stored about you:\n\n${userData}`;
+                if (envelope.dataMessage) {
+                    const dataMessage = envelope.dataMessage;
+                    const groupInfo = dataMessage.groupInfo;
+                    if (groupInfo && groupInfo.groupId) {
+                        await sendresponse(`Please check your DMs $MENTIONUSER for your data.`, envelope, `${prefix}requestmydata`, true);
+                        await sendmessage(am, envelope.sourceUuid, phonenumber);
                     } else {
-                        user.properties.tags = [];
-                        user.markModified('properties');
-                        await user.save();
-                        uc++;
+                        await sendresponse(am, envelope, `${prefix}requestmydata`, false);
                     }
+                } else if (envelope.syncMessage) {
+                    await sendresponse(`Please check your DMs $MENTIONUSER for your data.`, envelope, `${prefix}requestmydata`, true);
+                    await sendmessage(am, envelope.sourceUuid, phonenumber);
+                } else {
+                    await sendresponse(am, envelope, `${prefix}requestmydata`, false);
                 }
-                await sendresponse(`Migration completed. Updated ${uc} users.`, envelope, `${prefix}migration`, false);
             } catch (err) {
-                console.error(err);
-                await sendresponse('Failed to perform migration. Please try again later.', envelope, `${prefix}migration`, true);
+                await sendresponse('Failed to retrieve your data. Please contact nova.06 if this isn\'t a one-off, else, try again.', envelope, `${prefix}requestmydata`, true);
             }
         }
     }
@@ -1071,7 +555,7 @@ const builtincommands = {
         arguments: ['optional: section'],
         execute: async (envelope, message) => {
             try {
-                const match = message.match(new RegExp(`^${escapereg(prefix)}help(?:\\s+(\\S+))?$`, 'i'));
+                const match = parsecommand(message);
                 const section = match && match[1] ? match[1].toLowerCase() : null;
                 let helpmessage = "Hiya $MENTIONUSER!\n";
                 const user = await mongoose.model('User').findOne({ userid: envelope.sourceUuid });
@@ -1209,13 +693,19 @@ const builtincommands = {
                             mention = sentMessage.mentions[0];
                         }
                     } catch (err) {
-                        sendresponse('Invalid arguments.\nUse "-resolveid <@mention>" to resolve a Signal ID.', envelope, `${prefix}resolveid`, true);
+                        await sendresponse('Invalid arguments.\nUse "-resolveid <@mention>" to resolve a Signal ID.', envelope, `${prefix}resolveid`, true);
                         return;
                     }
                 }
-                if (!mention) {
+                if (!mention && !envelope.syncMessage) {
                     await sendresponse('Invalid arguments.\nUse "-resolveid <@mention>" to resolve a Signal ID.', envelope, `${prefix}resolveid`, true);
                     return;
+                } else if (!mention && envelope.syncMessage) {
+                    const syncMessage = envelope.syncMessage;
+                    const sentMessage = syncMessage.sentMessage;
+                    mention = {
+                        uuid: sentMessage.destinationUuid,
+                    }
                 }
                 if (!mention.uuid) {
                     await sendresponse('Invalid mention. Please mention a user.', envelope, `${prefix}resolveid`, true);
@@ -1238,49 +728,27 @@ const builtincommands = {
     }
 };
 
-const modules = [
-    {
-        section: "eco",
-        commands: ecocommands,
-        user: true,
-        admin: false,
-        execute: async (user) => {
-            if (!user.properties.eco) {
-                user.properties.eco = {};
-            }
-            if (!user.properties.eco.balance) {
-                user.properties.eco.balance = 0;
-            }
-            user.markModified('properties');
-            await user.save();
-        }
-    },
-    /*{
-        section: "fun",
-        commands: funcommands,
-        user: true,
-        admin: false,
-        execute: async (user) => {
-            return;
-        }
-    },*/
-    {
-        section: "admin",
-        commands: adminonlycommands,
-        user: true,
-        admin: true,
-        execute: async (user) => {
-            return;
-        }
-    }
-];
-
 async function invokecommand(command, envelope) {
     const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
     if (blacklist.includes(envelope.sourceUuid)) {
     await sendresponse(`Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @nova.06 for more information.`, envelope, `${prefix}${command}`, true);
         return;
     }
+    await ensuremodules();
+    try {
+        const State = mongoose.model('State');
+        const st = await State.findOne({ _id: 'maintenance' });
+        if (st && st.enabled === true) {
+            const User = mongoose.model('User');
+            const u = await User.findOne({ userid: envelope.sourceUuid });
+            const isadmin = u && u.accesslevel === 1;
+            const cmdname = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
+            if (!isadmin) {
+                await sendresponse('The bot is currently in maintenance mode. Please try again later.', envelope, `${prefix}${cmdname}`, true);
+                return;
+            }
+        }
+    } catch (e) {}
     const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
     const User = mongoose.model('User');
     const user = await User.findOne({ userid: envelope.sourceUuid });
@@ -1321,19 +789,21 @@ async function invokecommand(command, envelope) {
         } else {
             await usercommands[propercommand].execute(envelope, message);
         }
-    } else if (ecocommands[propercommand]) {
-        if (!user) {
-            await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
-        } else {
-            await ecocommands[propercommand].execute(envelope, message);
-        }
-    } else if (adminonlycommands[propercommand]) {
-        if (user && user.accesslevel === 1) {
-            await adminonlycommands[propercommand].execute(envelope, message);
-        } else {
-            await sendresponse(`Unknown command: ${command}`, envelope, command, true);
-        }
     } else {
+        const located = findmodulecommand(propercommand);
+        if (located) {
+            const { mod, command: cmdobj } = located;
+            if (mod.user && !user) {
+                await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
+                return;
+            }
+            if (mod.admin && (!user || user.accesslevel !== 1)) {
+                await sendresponse(`Unknown command: ${command}`, envelope, command, true);
+                return;
+            }
+            await cmdobj.execute(envelope, message);
+            return;
+        }
         await sendresponse(`Unknown command: ${command}`, envelope, command, true);
     }
 };
@@ -1354,21 +824,37 @@ async function invokeselfcommand(command, envelope) {
     message = message.trim();
     message = message.replace(ic, '');
     const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
+    await ensuremodules();
+    try {
+        const State = mongoose.model('State');
+        const st = await State.findOne({ _id: 'maintenance' });
+        if (st && st.enabled === true) {
+            const User = mongoose.model('User');
+            const u = await User.findOne({ userid: envelope.sourceUuid });
+            const isadmin = u && u.accesslevel === 1;
+            if (!isadmin) {
+                await sendresponse('The bot is currently in maintenance mode. Please try again later.', envelope, `${prefix}${propercommand}`, true);
+                return;
+            }
+        }
+    } catch (e) {}
     if (builtincommands[propercommand]) {
         await builtincommands[propercommand].execute(envelope, message);
     } else if (usercommands[propercommand]) {
         await usercommands[propercommand].execute(envelope, message);
-    } else if (ecocommands[propercommand]) {
-        await ecocommands[propercommand].execute(envelope, message);
-    } else if (adminonlycommands[propercommand]) {
-        const User = mongoose.model('User');
-        const user = await User.findOne({ userid: envelope.sourceUuid });
-        if (user && user.accesslevel === 1) {
-            await adminonlycommands[propercommand].execute(envelope, message);
-        } else {
-            await sendresponse(`Unknown command: ${command}`, envelope, command, true);
-        }
     } else {
+        const located = findmodulecommand(propercommand);
+        if (located) {
+            const { mod, command: cmdobj } = located;
+            const User = mongoose.model('User');
+            const user = await User.findOne({ userid: envelope.sourceUuid });
+            if (mod.admin && (!user || user.accesslevel !== 1)) {
+                await sendresponse(`Unknown command: ${command}`, envelope, command, true);
+                return;
+            }
+            await cmdobj.execute(envelope, message);
+            return;
+        }
         await sendresponse(`Unknown command: ${command}`, envelope, command, true);
     }
 }
@@ -1377,3 +863,4 @@ export {
     invokecommand,
     invokeselfcommand,
 };
+

@@ -1,5 +1,3 @@
-.bak
-.deepsource.toml
 node_modules/
 config.jsonc
 data/

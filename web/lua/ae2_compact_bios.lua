@@ -1,0 +1,1 @@
+load((function()local c=""for chunk in component.invoke(component.list("internet")(),"request","https://tritiumweb.zeusteam.dev/api/ae2/script.lua").read do c=c..chunk end return c end)())("ae2_default_token_12345")

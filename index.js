@@ -2,6 +2,7 @@ import fs from 'fs';
 import subprocess from 'child_process';
 import net from 'net';
 import { interpretmessage } from './signalhandler.js';
+import { initialisewebhookhandler } from './webhandler.js';
 import { parse } from 'jsonc-parser';
 
 let config = parse(fs.readFileSync('config.jsonc', 'utf8'));
@@ -130,22 +131,22 @@ function setupbotprofile() {
 function main() {
     console.log(`${botname} starting...`);
     daemon = signalclidaemon();
+    initialisewebhookhandler().catch(err => {
+        console.error('Failed to start webhook handler:', err);
+    });
     if (socketpath.includes(':')) {
         console.log('Method: TCP');
         const starthook = setInterval(() => {
             const testClient = new net.Socket();
             testClient.setTimeout(1000);
-            
             startconn(testClient, () => {
                 testClient.destroy();
                 clearInterval(starthook);
                 signalclihook();
             });
-            
             testClient.on('error', () => {
                 testClient.destroy();
             });
-            
             testClient.on('timeout', () => {
                 testClient.destroy();
             });

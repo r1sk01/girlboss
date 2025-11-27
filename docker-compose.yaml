@@ -3,10 +3,10 @@ services:
         build:
             context: .
             dockerfile: ./Signal.Dockerfile
-        container_name: tritiumbot-signal
+        container_name: girlboss-signal
         restart: unless-stopped
         networks:
-            - tritiumbot-network
+            - girlboss-network
         volumes:
             - ./:/app:rw
         attach: false
@@ -14,24 +14,47 @@ services:
         build:
             context: .
             dockerfile: ./Tritium.Dockerfile
-        container_name: tritiumbot-tritium
+        container_name: girlboss-tritium
         restart: unless-stopped
         networks:
-            - tritiumbot-network
+            - girlboss-network
         volumes:
             - ./:/app:rw
     mongodb:
         image: mongodb/mongodb-community-server:latest
-        container_name: tritiumbot-mongodb
+        container_name: girlboss-mongodb
         user: mongodb
         volumes:
             - ./data/db:/data/db:rw
             - ./data/configdb:/data/configdb:rw
         restart: unless-stopped
         networks:
-            - tritiumbot-network
+            - girlboss-network
+    dragonfly:
+        image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+        container_name: girlboss-dragonfly
+        restart: unless-stopped
+        networks:
+            - girlboss-network
+        command: ["--log_dir=/var/log/dragonfly", "--snapshot_cron=0 */6 * * *"]
+        volumes:
+            - ./data/dragonfly:/data:rw
+    authtest:
+        build:
+            context: .
+            dockerfile: ./Web.Dockerfile
+        container_name: girlboss-web
+        restart: unless-stopped
+        ports:
+            - "3000:3000"
+        networks:
+            - girlboss-network
+        volumes:
+            - ./web/:/app/web:rw
+            - ./config.jsonc:/app/config.jsonc:r
+            - ./mongoose.js:/app/mongoose.js:r
 
 networks:
-    tritiumbot-network:
+    girlboss-network:
         driver: bridge
-        name: tritiumbot-network
+        name: girlboss-network

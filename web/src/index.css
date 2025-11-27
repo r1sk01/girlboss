@@ -1,0 +1,46 @@
+@import "../styles/globals.css";
+
+@layer base {
+    :root {
+        @apply font-normal;
+    }
+
+    body {
+        @apply grid place-items-center min-w-[320px] min-h-screen relative m-0 bg-background text-foreground;
+    }
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: -50%;
+    z-index: -1;
+    opacity: 0.5;
+    background: url("./bg.png");
+    image-rendering: pixelated;
+    background-size: 256px;
+    transform: rotate(0) scale(1.35);
+    animation: waterfall 20s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes waterfall {
+    from {
+        background-position: 0 -256px;
+    }
+    to {
+        background-position: 0 256px;
+    }
+}
+
+@media (prefers-reduced-motion) {
+    *,
+    ::before,
+    ::after {
+        animation: none !important;
+    }
+}
+
+code {
+    font-family: 'JetBrainsMono NF', 'JetBrainsMono', monospace;
+}
