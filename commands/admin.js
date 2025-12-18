@@ -563,21 +563,6 @@ export default {
                 }
             }
         },
-        "pingx": {
-            description: `Tests the receive and processing speed of ${botname} via Signal's sent time`,
-            arguments: null,
-            execute: async (envelope, message) => {
-                try {
-                    const timestamp = envelope.timestamp;
-                    const time = new Date().getTime();
-                    const timetaken = time - timestamp;
-                    await sendresponse(`It took ${timetaken}ms for ${botname} to execute this command.\nMethod: ${time} - ${timestamp} = ${timetaken}`, envelope, `${prefix}ping`, false);
-                } catch (err) {
-                    console.error(err);
-                    await sendresponse('Let\'s be real here, how would this even fail?', envelope, `${prefix}ping`, true);
-                }
-            }
-        },
         "mksso": {
             description: "Creates an SSO provider",
             arguments: ["name", "owner"],

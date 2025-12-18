@@ -55,7 +55,7 @@ async function ensuremodules() {
     }
 }
 
-function findmodulecommand(cmd) {
+function findmodulecommand(cmd, user=undefined) {
     for (const mod of modules) {
         if (mod && mod.commands && Object.prototype.hasOwnProperty.call(mod.commands, cmd)) {
             return { mod, command: mod.commands[cmd] };
@@ -540,17 +540,21 @@ const usercommands = {
 
 const builtincommands = {
     "ping": {
-        description: "Respond with 'pong', used for testing uptime",
+        description: "Respond with time-to-execute, used for testing uptime",
         arguments: null,
         execute: async (envelope, message) => {
             try {
-                await sendresponse('pong', envelope, `${prefix}ping`, false);
+                const timestamp = envelope.timestamp;
+                const time = new Date().getTime();
+                const timetaken = time - timestamp;
+                await sendresponse(`It took ${timetaken}ms for ${botname} to execute this command.\nMethod: ${time} - ${timestamp} = ${timetaken}`, envelope, `${prefix}ping`, false);
             } catch (err) {
                 console.error(err);
+                await sendresponse('Let\'s be real here, how would this even fail?', envelope, `${prefix}ping`, true);
             }
         }
-        },
-        "help": {
+    },
+    "help": {
         description: "Display this help message",
         arguments: ['optional: section'],
         execute: async (envelope, message) => {
