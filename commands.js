@@ -1,19 +1,7 @@
 import fs from 'fs'
 import { parse as parseJsonc } from 'jsonc-parser'
 import os from 'os'
-import {
-    mongoose,
-    prefix,
-    botname,
-    phonenumber,
-    managedaccount,
-    sendresponse,
-    sendmessage,
-    getcontacts,
-    escapereg,
-    hotreloadable,
-    parsecommand
-} from './modulecontext.js'
+import {mongoose, prefix, botname, phonenumber, managedaccount, sendresponse, sendmessage, getcontacts, hotreloadable, parsecommand} from './modulecontext.js'
 
 const ic = /[\u00AD\u200B\u200C\u200D\u2060\uFEFF\uFE00-\uFE0F]/gu;
 
@@ -135,7 +123,7 @@ const usercommands = {
                 }
                 const match = parsecommand(message);
                 if (!match[1] || !match[1].trim()) {
-                    sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
+                    await sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
                 } else if (match[1].trim() === "true") {
                     user.properties.subscribed = true;
                     user.markModified('properties');
@@ -147,7 +135,7 @@ const usercommands = {
                     await user.save();
                     await sendresponse(`You are now unsubscribed from ${botname} broadcasts $MENTIONUSER!`, envelope, `${prefix}subscribe false`, false);
                 } else {
-                    sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
+                    await sendresponse(`Invalid argument.\nUse "-subscribe true" or "-subscribe false" to subscribe or unsubscribe from ${botname} broadcasts.`, envelope, `${prefix}subscribe`, true);
                 }
             } catch (err) {
                 await sendresponse('Unable to connect to database, is MongoDB running?', envelope, `${prefix}subscribe`, true);
@@ -198,7 +186,7 @@ const usercommands = {
                     user.properties = {};
                 }
                 const match = parsecommand(message);
-                if (!match || !match[1] || match[1].trim().length === 0) {
+                if (!match || !match[1] || match[1].trim().length === 0 || match[1].trim().length >= 51) {
                     await sendresponse('Please provide a valid nickname.', envelope, `${prefix}nick`, true);
                     return;
                 }
@@ -673,7 +661,7 @@ Source links:
 - https://codeberg.org/nxva/girlboss
 - https://github.com/LunarN0v4/girlboss
 
-Based on tritiumbotv2 by Nova Arctic (https://git.zeusteam.dev/nova/tritiumbotv2).`, envelope, `${prefix}info`, false);
+Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/nova/tritiumbotv2).`, envelope, `${prefix}info`, false);
             } catch (err) {
                 console.error(err);
             }
@@ -740,11 +728,18 @@ Based on tritiumbotv2 by Nova Arctic (https://git.zeusteam.dev/nova/tritiumbotv2
     }
 };
 
-async function invokecommand(command, envelope) {
-    const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
-    if (blacklist.includes(envelope.sourceUuid)) {
-    await sendresponse(`Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @nova.06 for more information.`, envelope, `${prefix}${command}`, true);
-        return;
+async function invokecommand(command, envelope, self = false) {
+    if (!self) {
+        const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
+        if (blacklist.includes(envelope.sourceUuid)) {
+            await sendresponse(
+                `Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @nova.06 for more information.`,
+                envelope,
+                `${prefix}${command}`,
+                true
+            );
+            return;
+        }
     }
     await ensuremodules();
     try {
@@ -754,23 +749,15 @@ async function invokecommand(command, envelope) {
             const User = mongoose.model('User');
             const u = await User.findOne({ userid: envelope.sourceUuid });
             const isadmin = u && u.accesslevel === 1;
-            const cmdname = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
             if (!isadmin) {
+                const cmdname = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
                 await sendresponse('The bot is currently in maintenance mode. Please try again later.', envelope, `${prefix}${cmdname}`, true);
                 return;
             }
         }
     } catch (e) {}
-    const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
-    const User = mongoose.model('User');
-    const user = await User.findOne({ userid: envelope.sourceUuid });
     const dataMessage = envelope.dataMessage;
-    let message
-    if (user && envelope.sourceName && envelope.sourceName !== user.username) {
-        user.username = envelope.sourceName;
-        user.markModified('username');
-        await user.save().catch(err => console.error('Failed to save username:', err));
-    }
+    let message;
     if (dataMessage && dataMessage.message) {
         message = dataMessage.message.trim();
     } else {
@@ -781,98 +768,59 @@ async function invokecommand(command, envelope) {
             message = '';
         }
     }
-    message = message.trim();
-    message = message.replace(ic, '');
-    if (propercommand === '') {
+    message = message.trim().replace(ic, '');
+    const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
+    const User = mongoose.model('User');
+    const user = await User.findOne({ userid: envelope.sourceUuid });
+    if (!self && user && envelope.sourceName && envelope.sourceName !== user.username) {
+        user.username = envelope.sourceName;
+        user.markModified('username');
+        await user.save().catch(err =>
+            console.error('Failed to save username:', err)
+        );
+    }
+    if (!self && propercommand === '') {
         if (envelope.dataMessage && !envelope.dataMessage.groupInfo) {
             await sendresponse('No command specified.\nUse "-help" for the full command list!', envelope, command, true);
         }
-    } else if (builtincommands[propercommand]) {
+        return;
+    }
+    if (builtincommands[propercommand]) {
         await builtincommands[propercommand].execute(envelope, message);
-    } else if (guestcommands[propercommand]) {
+        return;
+    }
+    if (!self && guestcommands[propercommand]) {
         if (!user) {
             await guestcommands[propercommand].execute(envelope, message);
         } else {
             await sendresponse(`You are already registered as a ${botname} user $MENTIONUSER.`, envelope, command, true);
         }
-    } else if (usercommands[propercommand]) {
-        if (!user) {
+        return;
+    }
+    if (usercommands[propercommand]) {
+        if (!self && !user) {
             await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
         } else {
             await usercommands[propercommand].execute(envelope, message);
         }
-    } else {
-        const located = findmodulecommand(propercommand);
-        if (located) {
-            const { mod, command: cmdobj } = located;
-            if (mod.user && !user) {
-                await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
-                return;
-            }
-            if (mod.admin && (!user || user.accesslevel !== 1)) {
-                await sendresponse(`Unknown command: ${command}`, envelope, command, true);
-                return;
-            }
-            await cmdobj.execute(envelope, message);
+        return;
+    }
+    const located = findmodulecommand(propercommand);
+    if (located) {
+        const { mod, command: cmdobj } = located;
+        if (!self && mod.user && !user) {
+            await sendresponse(`You are not registered as a ${botname} user $MENTIONUSER.\nUse "-register" to register!`, envelope, command, true);
             return;
         }
-        await sendresponse(`Unknown command: ${command}`, envelope, command, true);
-    }
-};
-
-async function invokeselfcommand(command, envelope) {
-    const dataMessage = envelope.dataMessage;
-    let message
-    if (dataMessage && dataMessage.message) {
-        message = dataMessage.message.trim();
-    } else {
-        const syncMessage = envelope.syncMessage;
-        if (syncMessage && syncMessage.sentMessage && syncMessage.sentMessage.message) {
-            message = syncMessage.sentMessage.message.trim();
-        } else {
-            message = '';
-        }
-    }
-    message = message.trim();
-    message = message.replace(ic, '');
-    const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
-    await ensuremodules();
-    try {
-        const State = mongoose.model('State');
-        const st = await State.findOne({ _id: 'maintenance' });
-        if (st && st.enabled === true) {
-            const User = mongoose.model('User');
-            const u = await User.findOne({ userid: envelope.sourceUuid });
-            const isadmin = u && u.accesslevel === 1;
-            if (!isadmin) {
-                await sendresponse('The bot is currently in maintenance mode. Please try again later.', envelope, `${prefix}${propercommand}`, true);
-                return;
-            }
-        }
-    } catch (e) {}
-    if (builtincommands[propercommand]) {
-        await builtincommands[propercommand].execute(envelope, message);
-    } else if (usercommands[propercommand]) {
-        await usercommands[propercommand].execute(envelope, message);
-    } else {
-        const User = mongoose.model('User');
-        const user = await User.findOne({ userid: envelope.sourceUuid });
-        const located = findmodulecommand(propercommand);
-        if (located) {
-            const { mod, command: cmdobj } = located;
-            if (mod.admin && (!user || user.accesslevel !== 1)) {
-                await sendresponse(`Unknown command: ${command}`, envelope, command, true);
-                return;
-            }
-            await cmdobj.execute(envelope, message);
+        if (mod.admin && (!user || user.accesslevel !== 1)) {
+            await sendresponse(`Unknown command: ${command}`, envelope, command, true);
             return;
         }
-        await sendresponse(`Unknown command: ${command}`, envelope, command, true);
+        await cmdobj.execute(envelope, message);
+        return;
     }
-}
-
-export {
-    invokecommand,
-    invokeselfcommand,
+    await sendresponse(`Unknown command: ${command}`, envelope, command, true);
 };
+
+export {invokecommand};
 

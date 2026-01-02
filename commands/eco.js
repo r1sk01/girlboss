@@ -195,11 +195,48 @@ export default {
                 }
             }
         },
+        "leaderboard": {
+            description: "View the Estrogen leaderboard!",
+            arguments: null,
+            execute: async (envelope, message) => {
+                try {
+                    const User = mongoose.model('User');
+                    const users = await User.find({});
+                    if (users.length === 0) {
+                        await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
+                        return;
+                    }
+
+                    let totalBalance = 0;
+                    const entries = [];
+                    for (const user of users) {
+                        const balance = user?.properties?.eco?.balance;
+                        if (typeof balance === 'number' && Number.isFinite(balance)) {
+                            totalBalance += balance;
+                            entries.push({ userid: user.userid, balance });
+                        }
+                    }
+
+                    entries.sort((a, b) => b.balance - a.balance);
+                    const lines = entries.map((e, i) => `${i + 1}: E${e.balance}`);
+
+                    await sendresponse(
+                        `There is a total of E${totalBalance} in the economy.\nUsers:\n${lines.join('\n') || 'None'}`,
+                        envelope,
+                        `${prefix}migration`,
+                        false
+                    );
+                } catch (err) {
+                    console.error(err);
+                    await sendresponse('Failed to display leaderboard. Please try again later.', envelope, `${prefix}migration`, true);
+                }
+            }
+        },
         "game": {
             description: "Let's go gambling! (in dev, disabled)",
             arguments: ["subcommand"],
             execute: async (envelope, message) => {
-                sendresponse("Command is locked until development is finished", envelope, `${prefix}game`, true);
+                await sendresponse("Command is locked until development is finished", envelope, `${prefix}game`, true);
                 return;
                 try {
                     const match = parsecommand(message);
@@ -214,7 +251,7 @@ export default {
             description: "Mine Estrogen at your island (in dev)",
             arguments: null,
             execute: async (envelope, message) => {
-                sendresponse("meow", envelope, `${prefix}mew`, true);
+                await sendresponse("meow", envelope, `${prefix}mew`, true);
                 return;
                 try {
                     const User = mongoose.model("User");

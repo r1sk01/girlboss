@@ -194,20 +194,20 @@ export default {
                     const match = parsecommand(message);
                     const id = match && match[1] ? match[1].toUpperCase() : null;
                     if (!id) {
-                        sendresponse(`To use Single Sign-On, you must provide an ID for a site to sign into.\nA site that supports SSO should provide you with one.\n!!! DO NOT USE AN ID THAT SOMEONE ELSE GIVES YOU !!!\nUsage: ${prefix}sso [id] [confirm]`, envelope, `${prefix}sso`, false);
+                        await sendresponse(`To use Single Sign-On, you must provide an ID for a site to sign into.\nA site that supports SSO should provide you with one.\n!!! DO NOT USE AN ID THAT SOMEONE ELSE GIVES YOU !!!\nUsage: ${prefix}sso [id] [confirm]`, envelope, `${prefix}sso`, false);
                     } else if (id) {
                         const result = await redis.get(`sso:${id}`);
                         if (result) {
                             const SSOProvider = await mongoose.model("SSOProvider");
                             const provider = await SSOProvider.findOne({ _id: result });
                             if (!provider) {
-                                sendresponse('It seems you have provided an invalid ID, please double check that the ID you provided is correct and hasn\'t expired (30 minute expiry).', envelope, `${prefix}sso`, true);
+                                await sendresponse('It seems you have provided an invalid ID, please double check that the ID you provided is correct and hasn\'t expired (30 minute expiry).', envelope, `${prefix}sso`, true);
                                 return;
                             }
                             if (match[2] && match[2].toLowerCase().trim() === "true") {
                                 await redis.del(`sso:${id}`);
                                 await redis.set(`sso-${provider._id}:${id}`, `${crypto.createHash('sha512').update(`${provider._id}:${envelope.sourceUuid}`).digest('hex')}`, 'EXAT', Math.floor(Date.now() / 1000) + 600);
-                                sendresponse(`Please let the provider know that you have accepted the SSO request to finish logging in!`, envelope, `${prefix}sso`, false)
+                                await sendresponse(`Please let the provider know that you have accepted the SSO request to finish logging in!`, envelope, `${prefix}sso`, false)
                             } else {
                                 const messages = [
                                     "Bake a cake",
@@ -224,14 +224,14 @@ export default {
                                     "Inject you with the opposite of your preferred sex hormone",
                                     "Double the money in your bank account"
                                 ];
-                                sendresponse(`${provider.name} is requesting authorisation (owned by ${provider.owner}).\nThis will give the provider the ability to:\n✓ Retrieve your Signal ID (hashed with SHA512)\n✓ Log you into your associated account\n✖ ${messages[Math.floor(Math.random() * messages.length)]}\n\nIf these permissions seem all good to you, run '-sso ${id} true' to authorise this app.`, envelope, `${prefix}sso`, false);
+                                await sendresponse(`${provider.name} is requesting authorisation (owned by ${provider.owner}).\nThis will give the provider the ability to:\n✓ Retrieve your Signal ID (hashed with SHA512)\n✓ Log you into your associated account\n✖ ${messages[Math.floor(Math.random() * messages.length)]}\n\nIf these permissions seem all good to you, run '-sso ${id} true' to authorise this app.`, envelope, `${prefix}sso`, false);
                             }
                         } else {
-                            sendresponse('It seems you have provided an invalid ID, please double check that the ID you provided is correct and hasn\'t expired (30 minute expiry).', envelope, `${prefix}sso`, true);
+                            await sendresponse('It seems you have provided an invalid ID, please double check that the ID you provided is correct and hasn\'t expired (30 minute expiry).', envelope, `${prefix}sso`, true);
                         }
                     }
                 } catch (e) {
-                    sendresponse('Failed to read/write data for this command. Please try again later.', envelope, `${prefix}sso`, true);
+                    await sendresponse('Failed to read/write data for this command. Please try again later.', envelope, `${prefix}sso`, true);
                 }
             }
         }

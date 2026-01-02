@@ -13,4 +13,4 @@ RUN mv ./signal-cli-0.13.22/lib/* /usr/local/lib/
 RUN rm -rf ./signal-cli-0.13.22
 RUN rm -rf ./tmp.tar.gz
 RUN apt-get update && apt-get upgrade -y && apt-get clean
-CMD [ "signal-cli", "--config", "/app/config", "daemon", "--tcp", "0.0.0.0:64", "--receive-mode", "on-connection" ]
+CMD [ "signal-cli", "--config", "/app/config", "daemon", "--tcp", "0.0.0.0:64", "--receive-mode", "on-connection", "--no-receive-stdout" ]

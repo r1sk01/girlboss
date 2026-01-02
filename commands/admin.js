@@ -571,7 +571,7 @@ export default {
                     const matches = [...message.matchAll(/"([^"]*)"/g)];
                     const SSOProvider = mongoose.model("SSOProvider");
                     if (!matches[0]?.[1] || !matches[1]?.[1]) {
-                        sendresponse('Invalid arguments.\nYou need to specify a name and owner of the provider:\n-mksso "name" "owner"', envelope, `${prefix}mksso`, true);
+                        await sendresponse('Invalid arguments.\nYou need to specify a name and owner of the provider:\n-mksso "name" "owner"', envelope, `${prefix}mksso`, true);
                         return;
                     }
                     const buf = crypto.getRandomValues(new Uint8Array(128));
@@ -585,7 +585,7 @@ export default {
                         key
                     });
                     await provider.save();
-                    sendresponse(`SSO Provider "${matches[0][1]}" created successfully (with an owner of ${matches[1][1]}).\nSSO Key: ${key}`, envelope, `${prefix}mksso`, false);
+                    await sendresponse(`SSO Provider "${matches[0][1]}" created successfully (with an owner of ${matches[1][1]}).\nSSO Key: ${key}`, envelope, `${prefix}mksso`, false);
                 } catch (e) {
                     console.error(e);
                     await sendresponse('Failed to create SSO provider.', envelope, `${prefix}ping`, true);

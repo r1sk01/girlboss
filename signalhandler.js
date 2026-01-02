@@ -71,7 +71,7 @@ function persistentconn(callback) {
     });
 }
 
-function sendreadreceipt(recipient, timestamp) {
+async function sendreadreceipt(recipient, timestamp) {
     if (!client || client.destroyed || client.readyState !== 'open') {
         console.error('No handler connection available for read receipt');
         return;
@@ -90,9 +90,9 @@ function sendreadreceipt(recipient, timestamp) {
     };
     json = JSON.stringify(json);
     client.write(json + '\n');
-};
+}
 
-function sendtypingindicator(recipient, stop, sender=undefined, props={}) {
+async function sendtypingindicator(recipient, stop, sender=undefined, props={}) {
     persistentconn(() => {
         if (!client || client.destroyed || client.readyState !== 'open') {
             console.error('No handler connection available for typing indicator');
@@ -120,7 +120,9 @@ function sendtypingindicator(recipient, stop, sender=undefined, props={}) {
 };
 
 function sendmessage(message, recipient, sender=undefined, props={}) {
-    sendtypingindicator(props.isselfcommand ? props.selfcommandsendto : recipient, false, sender !== undefined ? sender : phonenumber, props);
+    if (!props.groupid) {
+        sendtypingindicator(props.isselfcommand ? props.selfcommandsendto : recipient, false, sender !== undefined ? sender : phonenumber, props);
+    }
     persistentconn(() => {
         if (!client || client.destroyed || client.readyState !== 'open') {
             console.error('No handler connection available for sending message');
@@ -179,7 +181,9 @@ function sendmessage(message, recipient, sender=undefined, props={}) {
                     const results = result.results;
                     if (results[0].type === 'SUCCESS') {
                         setTimeout(() => {
-                            sendtypingindicator(props.isselfcommand ? props.selfcommandsendto : recipient, true, sender !== null ? sender : phonenumber, props);
+                            if (!props.groupid) {
+                                sendtypingindicator(props.isselfcommand ? props.selfcommandsendto : recipient, true, sender !== null ? sender : phonenumber, props);
+                            }
                         }, 100);
                     }
                 }
@@ -276,8 +280,8 @@ async function interpretmessage(json) {
                                                     } else {
                                                         envelope.isselfcommand = true;
                                                         const cm = await import(`./commands.js?t=${Date.now()}`);
-                                                        const { invokeselfcommand } = cm;
-                                                        invokeselfcommand(message, envelope);
+                                                        const { invokecommand } = cm;
+                                                        invokecommand(message, envelope, true);
                                                     }
                                                 }
                                                 return;
@@ -294,8 +298,8 @@ async function interpretmessage(json) {
                             } else if (sentMessage.destinationNumber != phonenumber && sentMessage.destinationNumber !== managedaccount && sentMessage.destinationUuid !== '7dc7c561-7c9b-4ccd-b38d-f6b4ace559ee') {
                                 envelope.isselfcommand = true;
                                 const cm = await import(`./commands.js?t=${Date.now()}`);
-                                const { invokeselfcommand } = cm;
-                                invokeselfcommand(message, envelope);
+                                const { invokecommand } = cm;
+                                invokecommand(message, envelope, true);
                             }
                         });
                     }
@@ -453,7 +457,7 @@ function getgroups(account=phonenumber) {
     });
 }
 
-function sendresponse(message, envelope, command, failed=false, props={}) {
+async function sendresponse(message, envelope, command, failed=false, props={}) {
     const recipient = envelope.sourceUuid;
     const dataMessage = envelope.dataMessage;
     const syncMessage = envelope.syncMessage;
