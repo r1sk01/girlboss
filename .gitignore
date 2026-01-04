@@ -1,7 +1,8 @@
 node_modules/
-config.jsonc
-data/
-config/
-icon.png
+/config.jsonc
+/data/
+/config/
+/icon.png
 /.idea/copilot.*
 /web/core.1
+/planning/
