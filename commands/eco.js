@@ -228,7 +228,7 @@ export default {
                     );
                 } catch (err) {
                     console.error(err);
-                    await sendresponse('Failed to display leaderboard. Please try again later.', envelope, `${prefix}migration`, true);
+                    await sendresponse('Failed to display leaderboard. Please try again later.', envelope, `${prefix}leaderboard`, true);
                 }
             }
         },

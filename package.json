@@ -8,7 +8,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "bun run index.js"
   },
-  "author": "Aria Arctic (git.zeusteam.dev/nova)",
+  "author": "Aria Arctic (git.zeusteam.dev/aria)",
   "license": "AGPL-3.0-or-later",
   "dependencies": {
     "@axiomhq/js": "^1.3.1",

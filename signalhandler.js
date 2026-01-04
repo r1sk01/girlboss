@@ -558,6 +558,33 @@ async function trustfix() {
     }, 5 * 60 * 1000);
 }
 
+async function wipeattachments() {
+    const { default: fs } = await import("fs/promises");
+    const path = await import("path");
+    const attachmentsDir = path.resolve("./config/attachments");
+    const executewipe = async () => {
+        try {
+            const entries = await fs.readdir(attachmentsDir, { withFileTypes: true });
+            await Promise.all(entries.map(entry => {
+                const fullPath = path.join(attachmentsDir, entry.name);
+                return fs.rm(fullPath, {
+                    recursive: true,
+                    force: true
+                });
+            }));
+        } catch (err) {
+            if (err.code !== "ENOENT") {
+                console.error("wipeattachments error:", err);
+            }
+        }
+    };
+    await executewipe();
+    setInterval(() => {
+        executewipe().catch(console.error);
+    }, 5 * 60 * 1000);
+}
+
+
 export {
     interpretmessage,
     sendmessage,
@@ -566,4 +593,5 @@ export {
     getcontacts,
     getgroups,
     trustfix,
+    wipeattachments,
 };

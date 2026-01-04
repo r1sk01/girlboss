@@ -657,11 +657,11 @@ const builtincommands = {
                 await sendresponse(`${process.env.npm_package_name} (colloquially named "${botname}") v${process.env.npm_package_version} running on ${os.type()} ${os.release()} (${os.arch()})
 Licensed with ${pkg.license}, developed by ${pkg.author}.
 Source links:
-- https://git.zeusteam.dev/nova/girlboss
-- https://codeberg.org/nxva/girlboss
-- https://github.com/LunarN0v4/girlboss
+- https://git.zeusteam.dev/aria/girlboss
+- https://codeberg.org/r1sk/girlboss
+- https://github.com/r1sk01/girlboss
 
-Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/nova/tritiumbotv2).`, envelope, `${prefix}info`, false);
+Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/aria/tritiumbotv2).`, envelope, `${prefix}info`, false);
             } catch (err) {
                 console.error(err);
             }
