@@ -500,7 +500,7 @@ const usercommands = {
                     userObj = JSON.parse(JSON.stringify(user));
                 }
                 if (userObj && userObj.properties && Object.prototype.hasOwnProperty.call(userObj.properties, 'authkey')) {
-                    userObj.properties.authkey = 'Ask nova.06 for the way to derive your raw key in the database from the one you receive.';
+                    userObj.properties.authkey = 'Ask r1sk.01 for the way to derive your raw key in the database from the one you receive.';
                 }
                 const userData = JSON.stringify(userObj, null, 2);
                 const am = `Hiya $MENTIONUSER!\nHere is all the data I have stored about you:\n\n${userData}`;
@@ -520,7 +520,7 @@ const usercommands = {
                     await sendresponse(am, envelope, `${prefix}requestmydata`, false);
                 }
             } catch (err) {
-                await sendresponse('Failed to retrieve your data. Please contact nova.06 if this isn\'t a one-off, else, try again.', envelope, `${prefix}requestmydata`, true);
+                await sendresponse('Failed to retrieve your data. Please contact r1sk.01 if this isn\'t a one-off, else, try again.', envelope, `${prefix}requestmydata`, true);
             }
         }
     }
@@ -733,7 +733,7 @@ async function invokecommand(command, envelope, self = false) {
         const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist;
         if (blacklist.includes(envelope.sourceUuid)) {
             await sendresponse(
-                `Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @nova.06 for more information.`,
+                `Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @r1sk.01 for more information.`,
                 envelope,
                 `${prefix}${command}`,
                 true
