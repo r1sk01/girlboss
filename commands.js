@@ -750,7 +750,7 @@ async function invokecommand(command, envelope, self = false) {
             const u = await User.findOne({ userid: envelope.sourceUuid });
             const isadmin = u && u.accesslevel === 1;
             if (!isadmin) {
-                const cmdname = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
+                const cmdname = (command.startsWith(prefix) ? command.slice(prefix.length) : command).split(' ')[0].replace(/^./, c => c.toLowerCase());
                 await sendresponse('The bot is currently in maintenance mode. Please try again later.', envelope, `${prefix}${cmdname}`, true);
                 return;
             }
@@ -769,7 +769,7 @@ async function invokecommand(command, envelope, self = false) {
         }
     }
     message = message.trim().replace(ic, '');
-    const propercommand = command.startsWith(prefix) ? command.slice(prefix.length).split(' ')[0] : command.split(' ')[0];
+    const propercommand = (command.startsWith(prefix) ? command.slice(prefix.length) : command).split(' ')[0].replace(/^./, c => c.toLowerCase());
     const User = mongoose.model('User');
     const user = await User.findOne({ userid: envelope.sourceUuid });
     if (!self && user && envelope.sourceName && envelope.sourceName !== user.username) {
