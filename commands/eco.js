@@ -231,35 +231,6 @@ export default {
                     await sendresponse('Failed to display leaderboard. Please try again later.', envelope, `${prefix}leaderboard`, true);
                 }
             }
-        },
-        "game": {
-            description: "Let's go gambling! (in dev, disabled)",
-            arguments: ["subcommand"],
-            execute: async (envelope, message) => {
-                await sendresponse("Command is locked until development is finished", envelope, `${prefix}game`, true);
-                return;
-                try {
-                    const match = parsecommand(message);
-                    const Game = mongoose.model("Game");
-
-                } catch (err) {
-                    await sendresponse('Failed to execute command. Please try again later.', envelope, `${prefix}game`, true);
-                }
-            }
-        },
-        "island": {
-            description: "Mine Estrogen at your island (in dev)",
-            arguments: null,
-            execute: async (envelope, message) => {
-                await sendresponse("meow", envelope, `${prefix}mew`, true);
-                return;
-                try {
-                    const User = mongoose.model("User");
-
-                } catch (err) {
-                    await sendresponse('Failed to execute command. Please try again later.', envelope, `${prefix}game`, true);
-                }
-            }
         }
     }
 };
