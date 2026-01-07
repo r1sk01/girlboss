@@ -206,7 +206,6 @@ export default {
                         await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
                         return;
                     }
-
                     let totalBalance = 0;
                     const entries = [];
                     for (const user of users) {
@@ -216,10 +215,8 @@ export default {
                             entries.push({ userid: user.userid, balance });
                         }
                     }
-
                     entries.sort((a, b) => b.balance - a.balance);
                     const lines = entries.map((e, i) => `${i + 1}: E${e.balance}`);
-
                     await sendresponse(
                         `There is a total of E${totalBalance} in the economy.\nUsers:\n${lines.join('\n') || 'None'}`,
                         envelope,

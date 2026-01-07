@@ -529,7 +529,7 @@ export default {
             description: "Perform a database migration (set up the migration in this commands execute section first)",
             arguments: null,
             execute: async (envelope, message) => {
-                //sendresponse('A migration isn't set up yet, please set one up in this commands execute section.', envelope, `${prefix}migration`, true); return;
+                sendresponse('A migration isn\'t set up yet, please set one up in this command\'s execute section.', envelope, `${prefix}migration`, true); return;
                 try {
                     const User = mongoose.model('User');
                     const users = await User.find({});
@@ -537,26 +537,6 @@ export default {
                         await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
                         return;
                     }
-
-                    let totalBalance = 0;
-                    const entries = [];
-                    for (const user of users) {
-                        const balance = user?.properties?.eco?.balance;
-                        if (typeof balance === 'number' && Number.isFinite(balance)) {
-                            totalBalance += balance;
-                            entries.push({ userid: user.userid, balance });
-                        }
-                    }
-
-                    entries.sort((a, b) => b.balance - a.balance);
-                    const lines = entries.map((e, i) => `${i + 1}: E${e.balance}`);
-
-                    await sendresponse(
-                        `There is a total of E${totalBalance} in the economy.\nUsers:\n${lines.join('\n') || 'None'}`,
-                        envelope,
-                        `${prefix}migration`,
-                        false
-                    );
                 } catch (err) {
                     console.error(err);
                     await sendresponse('Failed to perform migration. Please try again later.', envelope, `${prefix}migration`, true);
