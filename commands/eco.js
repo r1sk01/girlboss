@@ -66,13 +66,27 @@ export default {
                         await sendresponse('You can only claim your daily reward once every 18 hours.', envelope, `${prefix}daily`, true);
                         return;
                     }
+                    const users = await User.find({});
+                    let totalBalance = 0;
+                    for (const u of users) {
+                        const balance = u?.properties?.eco?.balance;
+                        if (typeof balance === 'number' && Number.isFinite(balance)) {
+                            totalBalance += balance;
+                        }
+                    }
+                    if (totalBalance >= 1000000) {
+                        await sendresponse('We\'re at capacity, sorry!', envelope, `${prefix}daily`, true);
+                        return;
+                    }
                     const reward = Math.floor(Math.random() * 400) + 100;
-                    user.properties.eco.balance += reward;
+                    const remaining = 1000000 - totalBalance;
+                    const actualReward = Math.min(reward, remaining);
+                    user.properties.eco.balance += actualReward;
                     user.properties.eco.balance = Math.floor(user.properties.eco.balance);
                     user.properties.eco.daily = ct;
                     user.markModified('properties');
                     await user.save();
-                    await sendresponse(`You have claimed your daily reward of E${reward}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}daily`, false);
+                    await sendresponse(`You have claimed your daily reward of E${actualReward}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}daily`, false);
                 } catch (err) {
                     await sendresponse('Failed to claim your daily reward. Please try again later.', envelope, `${prefix}daily`, true);
                 }
@@ -98,13 +112,27 @@ export default {
                         await sendresponse('You can only work once every hour.', envelope, `${prefix}work`, true);
                         return;
                     }
+                    const users = await User.find({});
+                    let totalBalance = 0;
+                    for (const u of users) {
+                        const balance = u?.properties?.eco?.balance;
+                        if (typeof balance === 'number' && Number.isFinite(balance)) {
+                            totalBalance += balance;
+                        }
+                    }
+                    if (totalBalance >= 1000000) {
+                        await sendresponse('We\'re at capacity, sorry!', envelope, `${prefix}work`, true);
+                        return;
+                    }
                     const earnings = Math.floor(Math.random() * 200) + 50;
-                    user.properties.eco.balance += earnings;
+                    const remaining = 1000000 - totalBalance;
+                    const actualEarnings = Math.min(earnings, remaining);
+                    user.properties.eco.balance += actualEarnings;
                     user.properties.eco.balance = Math.floor(user.properties.eco.balance);
                     user.properties.eco.work = ct;
                     user.markModified('properties');
                     await user.save();
-                    await sendresponse(`You worked hard and earned E${earnings}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}work`, false);
+                    await sendresponse(`You worked hard and earned E${actualEarnings}! Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}work`, false);
                 } catch (err) {
                     await sendresponse('Failed to work. Please try again later.', envelope, `${prefix}work`, true);
                 }
