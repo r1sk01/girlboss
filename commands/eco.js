@@ -217,7 +217,7 @@ export default {
                     await user.save();
                     await tu.save();
                     await sendmessage(`You have received E${amount} from ${user.userid}. Your new balance is E${tu.properties.eco.balance}.`, tui, phonenumber);
-                    await sendresponse(`You have given E${amount} to ${tui}. Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}give`, false);
+                    await sendresponse(`You have given E${amount} to ${tu.userid}. Your new balance is E${user.properties.eco.balance}.`, envelope, `${prefix}give`, false);
                 } catch (err) {
                     await sendresponse('Failed to give money. Please try again later.', envelope, `${prefix}give`, true);
                 }
