@@ -203,7 +203,7 @@ export default {
                     const User = mongoose.model('User');
                     const users = await User.find({});
                     if (users.length === 0) {
-                        await sendresponse('No users found in the database.', envelope, `${prefix}migration`, true);
+                        await sendresponse('houston, we have a problem', envelope, `${prefix}leaderboard`, true);
                         return;
                     }
                     let totalBalance = 0;
@@ -217,12 +217,7 @@ export default {
                     }
                     entries.sort((a, b) => b.balance - a.balance);
                     const lines = entries.map((e, i) => `${i + 1}: E${e.balance}`);
-                    await sendresponse(
-                        `There is a total of E${totalBalance} in the economy.\nUsers:\n${lines.join('\n') || 'None'}`,
-                        envelope,
-                        `${prefix}migration`,
-                        false
-                    );
+                    await sendresponse(`There is a total of E${totalBalance} in the economy.\nUsers:\n${lines.join('\n') || 'None'}`, envelope, `${prefix}leaderboard`, false);
                 } catch (err) {
                     console.error(err);
                     await sendresponse('Failed to display leaderboard. Please try again later.', envelope, `${prefix}leaderboard`, true);
