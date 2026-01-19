@@ -14,12 +14,35 @@ const mongoose = exportmodels(mongoosecon);
 const redis = new Redis(rediscon);
 
 redis.on('error', (err) => {
-    console.error('GirlbossWeb Redis connection error:', err);
+    console.error('Problem initialising ioredis:', err);
 });
 
 redis.on('connect', () => {
-    console.log('GirlbossWeb connected to Redis/DragonflyDB');
+    console.log('Initialised ioredis');
 });
+
+async function handleerr0r(err: any, module: string) {
+    if (process.env.WEBHOOK_ID) {
+        try {
+            const Webhook = mongoose.model('Webhook');
+            const webhook = await Webhook.findById(process.env.WEBHOOK_ID);
+            if (webhook) {
+                const webhookMessage = {
+                    userid: webhook.userid,
+                    name: "GirlbossWeb",
+                    content: `Hiya Aria, there's a problem on girlboss.arctic from ${module}:\n${String(err).substring(0, 1900)}`,
+                    timestamp: Date.now()
+                };
+                await redis.publish('webhook-messages', JSON.stringify(webhookMessage));
+            }
+        } catch (err2) {
+            console.error('The set WEBHOOK_ID might be invalid or a fatal internal error occurred:', err2);
+            console.error('Here\'s the original error that was supposed to be sent to the webhook from ' + module + ":", err);
+        }
+    } else {
+        console.error('Error reported by ' + module + ':', err);
+    }
+}
 
 async function checkauthvalidity(authkey: string) {
     try {
@@ -51,7 +74,7 @@ async function checkauthvalidity(authkey: string) {
             return { failed: false, attestation: true, message: "AuthKey is valid", user };
         }
     } catch (err) {
-        console.error(err);
+        handleerr0r(err, 'checkauthvalidity');
         return { failed: true, message: "Internal Server Error" };
     }
 }
@@ -76,12 +99,6 @@ const server = serve({
                         message: "Login successful"
                     }, { status: 200 });
                     response.headers.set('Set-Cookie', `authkey=${authkey}; HttpOnly; Secure; SameSite=Strict; Path=/`);
-                    return response;
-                } else if (!validity.failed && !validity.attestation) {
-                    const response = Response.json({
-                        error: "Invalid AuthKey"
-                    }, { status: 401 });
-                    response.headers.set('Set-Cookie', `authkey=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
                     return response;
                 } else {
                     const response = Response.json({
@@ -115,12 +132,6 @@ const server = serve({
                             properties: validity.user.properties
                         }
                     }, { status: 200 });
-                } else if (!validity.failed && !validity.attestation) {
-                    const response = Response.json({
-                        error: "Invalid AuthKey"
-                    }, { status: 401 });
-                    response.headers.set('Set-Cookie', `authkey=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
-                    return response;
                 } else {
                     const response = Response.json({
                         error: "Invalid AuthKey"
@@ -202,12 +213,6 @@ const server = serve({
                             message: `${ai.message}E${earnings}!`
                         }, { status: 200 });
                     }
-                } else if (!validity.failed && !validity.attestation) {
-                    const response = Response.json({
-                        error: "Invalid AuthKey"
-                    }, { status: 401 });
-                    response.headers.set('Set-Cookie', `authkey=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
-                    return response;
                 } else {
                     const response = Response.json({
                         error: "Invalid AuthKey"
@@ -235,12 +240,6 @@ const server = serve({
                     const response = Response.json({
                         message: "Logout successful"
                     }, { status: 200 });
-                    response.headers.set('Set-Cookie', `authkey=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
-                    return response;
-                } else if (!validity.failed && !validity.attestation) {
-                    const response = Response.json({
-                        error: "Invalid AuthKey"
-                    }, { status: 401 });
                     response.headers.set('Set-Cookie', `authkey=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0`);
                     return response;
                 } else {
@@ -289,8 +288,8 @@ const server = serve({
                         success: true,
                         message: "Webhook message queued for delivery"
                     });
-                } catch (error) {
-                    console.error('Webhook error:', error);
+                } catch (err) {
+                    handleerr0r(err, '/api/webhook/:hook');
                     return Response.json({ error: "Internal server error" }, { status: 500 });
                 }
             }
@@ -313,8 +312,8 @@ const server = serve({
                         await redis.set(`sso:${deviceid}`, result._id, 'EXAT', Math.floor(Date.now() / 1000) + 1800);
                         return new Response(`${deviceid}`, { status: 200 });
                     }
-                } catch (e) {
-                    console.error('Error starting an SSO session:', e);
+                } catch (err) {
+                    handleerr0r(err, '/api/sso/start');
                     return new Response("Server Error", { status: 500 });
                 }
             }
@@ -345,8 +344,8 @@ const server = serve({
                             return new Response("No device identifier provided in request body", { status: 400 });
                         }
                     }
-                } catch (e) {
-                    console.error('Error finishing SSO session:', e);
+                } catch (err) {
+                    handleerr0r(err, '/api/sso/finish');
                     return new Response("Server Error", { status: 500 });
                 }
             }
