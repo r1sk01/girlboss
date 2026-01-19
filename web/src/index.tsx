@@ -151,6 +151,9 @@ const server = serve({
                         error: validity.message
                     }, { status: 500 });
                 } else if (!validity.failed && validity.attestation) {
+                    return Response.json({
+                        error: "We're at capacity, sorry!"
+                    }, { status: 400 });
                     const User = mongoose.model('User');
                     const user = await User.findOne({ userid: validity.user.userid });
                     const bc = [
