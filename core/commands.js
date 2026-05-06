@@ -24,7 +24,7 @@ let modules = []
 
 async function loadmodules() {
     const mods = []
-    let entries;
+    let entries
     try {
         entries = fs.readdirSync('./commands', { withFileTypes: true })
     } catch (e) {
@@ -416,8 +416,8 @@ const usercommands = {
                         const hasvoted = poll.voters && poll.voters.includes(envelope.sourceUuid)
                         pm += `[${index}] ID: ${poll.pollid}\n`
                         pm += `    Question: ${poll.question}\n`
-                        pm += `    Total votes: ${totalvotes}\n`
-                        pm += `    Has voted?: ${hasvoted ? 'true' : 'false'}\n\n`
+                        pm += `    Total votes: ${totalvotes}`
+                        pm += `\n${hasvoted ? '' : '    This poll needs your vote!'}\n\n`
                     })
                     pm += `Use "-poll [index/pollid]" to view details or "-poll [index/pollid] [option]" to vote.\n`
                     pm += `Example: "-poll 0" for first poll, "-poll 1 2" to vote option 2 on second poll.`
@@ -455,7 +455,7 @@ const usercommands = {
                 if (!match[2]) {
                     const uhv = poll.voters && poll.voters.includes(envelope.sourceUuid)
                     const tv = poll.votes ? poll.votes.reduce((sum, count) => sum + count, 0) : 0
-                    let pollindex;
+                    let pollindex
                     if (/^\d+$/.test(pollidoridx)) {
                         pollindex = pollidoridx
                     } else {
@@ -777,8 +777,7 @@ const builtincommands = {
                     }
                     const as = modules.filter((s) => {
                         if (s.admin && (!user || user.accesslevel !== 1)) return false
-                        return !(s.user && !user);
-
+                        return !(s.user && !user)
                     })
                     if (as.length > 0) {
                         const alwayson = as.filter((s) => s.alwayson)
@@ -900,6 +899,7 @@ Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/aria/tritiumbotv2
             let mention
             try {
                 const dataMessage = envelope.dataMessage
+                console.log(dataMessage)
                 mention = dataMessage?.mentions?.[0]
                 if (!mention) {
                     try {
@@ -953,7 +953,6 @@ Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/aria/tritiumbotv2
                     `${prefix}resolveid`,
                     false
                 )
-
             } catch (err) {
                 await sendresponse(
                     `User ID for $MENTIONUSER is ${mention.uuid} (${botname} doesn't know this user).`,
