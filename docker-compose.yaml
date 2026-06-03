@@ -33,6 +33,8 @@ services:
         restart: unless-stopped
         networks:
             - girlboss-network
+        environment:
+            - GLIBC_TUNABLES=glibc.pthread.rseq=1
     dragonfly:
         image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
         container_name: girlboss-dragonfly

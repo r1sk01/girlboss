@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-docker compose down
-docker image rm arcticgirlboss-web arcticgirlboss-signal arcticgirlboss-tritium girlboss-web girlboss-signal girlboss-tritium docker.dragonflydb.io/dragonflydb/dragonfly mongodb/mongodb-community-server oven/bun -f
 git pull origin master
-docker compose up -d --build
+docker compose pull mongodb dragonfly
+docker compose build --pull signal tritium web
+docker compose up -d --remove-orphans
