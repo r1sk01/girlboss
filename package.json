@@ -15,7 +15,7 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix"
     },
-    "author": "Aria Arctic (git.zeusteam.dev/aria)",
+    "author": "Arctic Systems (git.zeusteam.dev/arcticsys)",
     "license": "AGPL-3.0-or-later",
     "dependencies": {
         "@axiomhq/js": "^1.8.0",

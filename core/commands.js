@@ -867,9 +867,9 @@ const builtincommands = {
                     `${appname} (colloquially named "${botname}") v${version} running on ${os.type()} ${os.release()} (${os.arch()})
 Licensed with ${license}, developed by ${author}.
 Source links:
-- https://git.zeusteam.dev/aria/girlboss
-- https://codeberg.org/r1sk/girlboss
-- https://github.com/r1sk01/girlboss
+- https://git.zeusteam.dev/arcticsys/girlboss
+- https://codeberg.org/arcticsys/girlboss
+- https://github.com/arcticsys/girlboss
 
 Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/aria/tritiumbotv2).`,
                     envelope,
