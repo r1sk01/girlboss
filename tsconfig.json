@@ -1,0 +1,18 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "lib": ["ESNext"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "allowJs": true,
+        "checkJs": true,
+        "noEmit": true,
+        "strict": false,
+        "skipLibCheck": true,
+        "resolveJsonModule": true,
+        "allowSyntheticDefaultImports": true,
+        "types": ["bun"]
+    },
+    "include": ["*.js", "core/**/*.js", "commands/**/*.js", "db/**/*.js", "types/**/*.js", "tests/**/*.js"],
+    "exclude": ["node_modules", "web", "data", "config"]
+}

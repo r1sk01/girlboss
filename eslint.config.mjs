@@ -21,14 +21,7 @@ const noopParser = {
 
 export default [
     {
-        ignores: [
-            'node_modules/**',
-            'web/node_modules/**',
-            'data/**',
-            'config/**',
-            'web/dist/**',
-            'web/.next/**',
-        ],
+        ignores: ['node_modules/**', 'web/node_modules/**', 'data/**', 'config/**', 'web/dist/**', 'web/.next/**'],
     },
     {
         files: ['**/*.{js,mjs,cjs}'],

@@ -4,6 +4,7 @@
 import dns from 'dns/promises'
 import crypto from 'crypto'
 import { mongoose, redis, prefix, sendresponse, parsecommand } from '../core/modulecontext.js'
+import { randomid } from '../core/secrets.js'
 
 const ssoScopeDescriptions = {
     accesslevel: 'Retrieve your user access level',
@@ -64,10 +65,7 @@ const utils = {
                             await existingwebhook.deleteOne()
                         }
                         const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-                        const webhookid = Array.from(
-                            { length: 32 },
-                            () => chars[Math.floor(Math.random() * chars.length)]
-                        ).join('')
+                        const webhookid = randomid(32, chars)
                         const newwebhook = new Webhook({
                             _id: webhookid,
                             userid: envelope.sourceUuid,

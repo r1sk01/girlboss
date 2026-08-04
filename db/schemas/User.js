@@ -1,6 +1,10 @@
 // noinspection JSUnusedGlobalSymbols
 export const modelName = 'User'
 
+/**
+ * @param {typeof import('mongoose')} mongoose
+ * @param {{ getredis?: () => { get: (key: string) => Promise<string|null>, del: (key: string) => Promise<number> } }} deps
+ */
 export default function createUserSchema(mongoose, { getredis } = {}) {
     const schema = new mongoose.Schema({
         userid: String,
@@ -29,5 +33,3 @@ export default function createUserSchema(mongoose, { getredis } = {}) {
     schema.index({ userid: 1 }, { unique: true })
     return schema
 }
-
-

@@ -111,7 +111,10 @@ export function SelectSeparator({ className, ...props }: React.ComponentProps<ty
     )
 }
 
-export function SelectScrollUpButton({ className, ...props }: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
+export function SelectScrollUpButton({
+    className,
+    ...props
+}: React.ComponentProps<typeof SelectPrimitive.ScrollUpButton>) {
     return (
         <SelectPrimitive.ScrollUpButton
             data-slot="select-scroll-up-button"
@@ -137,4 +140,3 @@ export function SelectScrollDownButton({
         </SelectPrimitive.ScrollDownButton>
     )
 }
-

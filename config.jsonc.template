@@ -12,5 +12,9 @@
     "mongoosecon": "mongodb://girlboss-mongodb:27017/tritium", // This should contain the connection string for the MongoDB database you want to use
     "rediscon": "redis://girlboss-dragonfly:6379", // This should contain the connection string for the Redis/DragonflyDB instance used for webhook messaging
     "managedaccount": "", // If you want this bot to double as a selfbot, link your main phone number to signal-cli and put the phone number here
-    "externalsignal": true // This should contain a boolean value of whether you want to use an external signal-cli instance (TCP only)
+    "externalsignal": true, // This should contain a boolean value of whether you want to use an external signal-cli instance (TCP only)
+    "authkeyttldays": 90, // How many days an AuthKey stays valid for before the user has to run -authkey again (set to 0 to never expire)
+    "commandratelimit": { "limit": 20, "windowseconds": 60 }, // How many commands a single Signal user may run per window
+    "loginratelimit": { "limit": 10, "windowseconds": 300 }, // How many /api/login attempts a single IP may make per window
+    "webhookratelimit": { "limit": 30, "windowseconds": 60 } // How many deliveries a single webhook may make per window
 }

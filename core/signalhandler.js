@@ -11,7 +11,7 @@ import { Axiom } from '@axiomhq/js'
 /** @typedef {{ account?: string, envelope?: Envelope }} SignalParams */
 /** @typedef {{ params?: SignalParams }} SignalPayload */
 
-const mongoosemodule = await import('./mongoose.js');
+const mongoosemodule = await import('./mongoose.js')
 await mongoosemodule.exportmodels()
 
 /** @type {BotConfig} */
@@ -87,7 +87,7 @@ async function sendreadreceipt(recipient, timestamp) {
     }
     const tid = Math.floor(Math.random() * 1024) + 1
     const id = tid.toString()
-    let json = {
+    const json = {
         jsonrpc: '2.0',
         id,
         method: 'sendReceipt',
@@ -97,8 +97,7 @@ async function sendreadreceipt(recipient, timestamp) {
             targetTimestamp: timestamp,
         },
     }
-    json = JSON.stringify(json)
-    client.write(json + '\n')
+    client.write(JSON.stringify(json) + '\n')
 }
 
 /**
@@ -115,7 +114,7 @@ async function sendtypingindicator(recipient, stop, sender = undefined, props = 
         }
         const tid = Math.floor(Math.random() * 1024) + 1
         const id = tid.toString()
-        let json = {
+        const json = {
             jsonrpc: '2.0',
             id,
             method: 'sendTyping',
@@ -129,8 +128,7 @@ async function sendtypingindicator(recipient, stop, sender = undefined, props = 
         } else {
             json.params.recipient = `${recipient}`
         }
-        json = JSON.stringify(json)
-        client.write(json + '\n')
+        client.write(JSON.stringify(json) + '\n')
     })
 }
 
@@ -157,7 +155,7 @@ function sendmessage(message, recipient, sender = undefined, props = {}) {
         }
         const tid = Math.floor(Math.random() * 1024) + 1
         const id = tid.toString()
-        let json = {
+        const json = {
             jsonrpc: '2.0',
             id,
             method: 'send',
@@ -222,8 +220,7 @@ function sendmessage(message, recipient, sender = undefined, props = {}) {
         if (props.file) {
             json.params.attachments = [`${props.file}`]
         }
-        json = JSON.stringify(json)
-        client.write(json + '\n')
+        client.write(JSON.stringify(json) + '\n')
         const responsehandler = async (data) => {
             const content = data.toString()
             if (content == null || content === '' || content === undefined || content === '\n') {
@@ -255,9 +252,7 @@ function sendmessage(message, recipient, sender = undefined, props = {}) {
                         }, 100)
                     }
                 }
-            } catch (error) {
-
-            }
+            } catch (error) {}
         }
         client.on('data', responsehandler)
         responsehandler.timeid = setTimeout(() => {
@@ -320,7 +315,7 @@ async function interpretmessage(json) {
                         if (sentMessage.groupInfo && sentMessage.groupInfo.groupId) {
                             const tid = Math.floor(Math.random() * 1024) + 1
                             const id = tid.toString()
-                            let json = {
+                            const json = {
                                 jsonrpc: '2.0',
                                 id,
                                 method: 'listGroups',
@@ -401,7 +396,7 @@ function getcontacts(account = phonenumber, recipient = undefined) {
             }
             const tid = Math.floor(Math.random() * 1024) + 1
             const id = tid.toString()
-            let json = {
+            const json = {
                 jsonrpc: '2.0',
                 id,
                 method: 'listContacts',
@@ -413,8 +408,7 @@ function getcontacts(account = phonenumber, recipient = undefined) {
             if (recipient) {
                 json.params.recipient = `${recipient}`
             }
-            json = JSON.stringify(json)
-            client.write(json + '\n')
+            client.write(JSON.stringify(json) + '\n')
             let buffer = ''
             const responsehandler = (data) => {
                 buffer += data.toString()
@@ -476,7 +470,7 @@ function getgroups(account = phonenumber) {
             }
             const tid = Math.floor(Math.random() * 1024) + 1
             const id = tid.toString()
-            let json = {
+            const json = {
                 jsonrpc: '2.0',
                 id,
                 method: 'listGroups',
@@ -484,8 +478,7 @@ function getgroups(account = phonenumber) {
                     account: account,
                 },
             }
-            json = JSON.stringify(json)
-            client.write(json + '\n')
+            client.write(JSON.stringify(json) + '\n')
             let buffer = ''
             const responsehandler = (data) => {
                 buffer += data.toString()
@@ -579,7 +572,7 @@ async function trustfix() {
             }
             const tid = Math.floor(Math.random() * 1024) + 1
             const id = tid.toString()
-            let json = {
+            const json = {
                 jsonrpc: '2.0',
                 id,
                 method: 'listIdentities',
@@ -587,8 +580,7 @@ async function trustfix() {
                     account: phonenumber,
                 },
             }
-            json = JSON.stringify(json)
-            client.write(json + '\n')
+            client.write(JSON.stringify(json) + '\n')
             let buffer = ''
             const responsehandler = async (data) => {
                 buffer += data.toString()
@@ -612,7 +604,7 @@ async function trustfix() {
                                 if (identity.trustLevel !== 'TRUSTED_VERIFIED') {
                                     const tid2 = Math.floor(Math.random() * 1024) + 1
                                     const id2 = tid2.toString()
-                                    let json2 = {
+                                    const json2 = {
                                         jsonrpc: '2.0',
                                         id: id2,
                                         method: 'trust',
@@ -622,8 +614,7 @@ async function trustfix() {
                                             verifiedSafetyNumber: identity.safetyNumber,
                                         },
                                     }
-                                    json2 = JSON.stringify(json2)
-                                    client.write(json2 + '\n')
+                                    client.write(JSON.stringify(json2) + '\n')
                                 }
                             }
                             return

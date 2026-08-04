@@ -57,9 +57,11 @@ services:
         volumes:
             - ./web/:/app/web:rw
             - ./web/node_modules:/app/node_modules:ro
-            - ./config.jsonc:/app/config.jsonc:r
-            - ./core/mongoose.js:/app/core/mongoose.js:r
-            - ./db/schemas:/app/db/schemas:r
+            - ./config.jsonc:/app/config.jsonc:ro
+            - ./core/mongoose.js:/app/core/mongoose.js:ro
+            - ./core/secrets.js:/app/core/secrets.js:ro
+            - ./core/ratelimit.js:/app/core/ratelimit.js:ro
+            - ./db/schemas:/app/db/schemas:ro
 
 networks:
     girlboss-network:

@@ -12,4 +12,3 @@ export default function createPollSchema(mongoose) {
     schema.index({ pollid: 1 }, { unique: true })
     return schema
 }
-

@@ -36,6 +36,3 @@
 
 // Keep as a module for JSDoc import() typedef resolution.
 export const __botEnvelopeTypes = true
-
-
-

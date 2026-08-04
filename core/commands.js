@@ -6,16 +6,21 @@ import { parse as parseJsonc } from 'jsonc-parser'
 import os from 'os'
 import {
     mongoose,
+    redis,
     prefix,
     botname,
     phonenumber,
     managedaccount,
+    blacklist,
+    commandratelimit,
     sendresponse,
     sendmessage,
     getcontacts,
     hotreloadable,
     parsecommand,
 } from './modulecontext.js'
+import { generateauthkey, hashauthkey } from './secrets.js'
+import { consumeratelimit } from './ratelimit.js'
 /** @typedef {import('../types/botenvelope.types.js').Envelope} Envelope */
 
 const ic = /[\u00AD\u200B-\u200D\u2060\uFEFF\uFE00-\uFE0F]/gu
@@ -287,7 +292,7 @@ const usercommands = {
     },
     authkey: {
         description: `Create an AuthKey for ${botname} services`,
-        arguments: null,
+        arguments: ['optional: revoke'],
         execute: async (envelope, message) => {
             try {
                 const User = mongoose.model('User')
@@ -295,18 +300,31 @@ const usercommands = {
                 if (!user.properties) {
                     user.properties = user.properties || {}
                 }
-                const kbuf = new Uint8Array(128)
-                for (let i = 0; i < 128; i++) {
-                    kbuf[i] = Math.floor(Math.random() * 256)
+                const match = parsecommand(message)
+                if (match && match[1] && match[1].toLowerCase() === 'revoke') {
+                    if (!user.properties.authkey) {
+                        await sendresponse('You do not have an AuthKey to revoke.', envelope, `${prefix}authkey`, true)
+                        return
+                    }
+                    delete user.properties.authkey
+                    user.markModified('properties')
+                    await user.save()
+                    await sendresponse(
+                        'Your AuthKey has been revoked. Any site still holding it is now signed out.',
+                        envelope,
+                        `${prefix}authkey revoke`,
+                        false
+                    )
+                    return
                 }
+                const akbuf = generateauthkey()
                 user.properties.authkey = {
-                    key: Array.from(kbuf),
+                    hash: hashauthkey(akbuf),
                     createdat: Date.now(),
                 }
                 user.markModified('properties')
                 await user.save()
                 const sidbuf = Buffer.from(envelope.sourceUuid, 'utf8')
-                const akbuf = Buffer.from(user.properties.authkey.key)
                 const cbuf = Buffer.concat([sidbuf, akbuf])
                 const token = cbuf.toString('base64')
                 const am = `Hiya $MENTIONUSER!\nYour AuthKey is:\n${token}\n\nYou can use this key for sites like https://tritiumweb.zeusteam.dev/ that use ${botname} as an SSO provider`
@@ -969,14 +987,28 @@ Based on tritiumbotv2 by Aria Arctic (https://git.zeusteam.dev/aria/tritiumbotv2
 async function invokecommand(command, envelope, self = false) {
     const ev = /** @type {Envelope} */ (envelope)
     if (!self) {
-        const blacklist = parseJsonc(fs.readFileSync('config.jsonc', 'utf8')).blacklist
-        if (blacklist.includes(ev.sourceUuid)) {
+        if (blacklist().includes(ev.sourceUuid)) {
             await sendresponse(
                 `Hi $MENTIONUSER.\nYou are blacklisted from using ${botname}.\nPlease contact @r1sk.01 for more information.`,
                 envelope,
                 `${prefix}${command}`,
                 true
             )
+            return
+        }
+        const { limit, windowseconds } = commandratelimit
+        const quota = await consumeratelimit(redis, `command:${ev.sourceUuid}`, limit, windowseconds)
+        if (!quota.allowed) {
+            // Only the first rejection of a window answers, so a flood cannot be
+            // amplified into a flood of refusals.
+            if (quota.count === limit + 1) {
+                await sendresponse(
+                    `You are sending commands too quickly. Try again in ${quota.retryafter} seconds.`,
+                    envelope,
+                    `${prefix}${command}`,
+                    true
+                )
+            }
             return
         }
     }

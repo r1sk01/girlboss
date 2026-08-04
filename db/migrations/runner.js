@@ -71,7 +71,12 @@ async function runmigrationup(mongoose, migration) {
         if (session) {
             try {
                 await session.withTransaction(async () => {
-                    await migration.up(mongoose, { session, timestamp: migration.timestamp, slug: migration.slug, file: migration.file })
+                    await migration.up(mongoose, {
+                        session,
+                        timestamp: migration.timestamp,
+                        slug: migration.slug,
+                        file: migration.file,
+                    })
                 })
                 return
             } catch (error) {
@@ -86,15 +91,26 @@ async function runmigrationup(mongoose, migration) {
         if (session) await session.endSession()
     }
 
-    await migration.up(mongoose, { session: null, timestamp: migration.timestamp, slug: migration.slug, file: migration.file })
+    await migration.up(mongoose, {
+        session: null,
+        timestamp: migration.timestamp,
+        slug: migration.slug,
+        file: migration.file,
+    })
 }
 
 export async function runmigrations(
     mongoose,
-    { only = null, appliedby = 'system:boot', continueonerror = true, retryfailed = false } = {}
+    {
+        only = null,
+        appliedby = 'system:boot',
+        continueonerror = true,
+        retryfailed = false,
+        definitions: provided = null,
+    } = {}
 ) {
     const MigrationRegistry = mongoose.model('MigrationRegistry')
-    const definitions = await listmigrationdefinitions()
+    const definitions = provided ?? (await listmigrationdefinitions())
     const selected =
         Array.isArray(only) && only.length > 0
             ? definitions.filter((item) =>
@@ -178,7 +194,12 @@ export async function runmigrations(
                 }
             )
             results.failed += 1
-            results.failures.push({ file: migration.file, timestamp: migration.timestamp, slug: migration.slug, error: failure })
+            results.failures.push({
+                file: migration.file,
+                timestamp: migration.timestamp,
+                slug: migration.slug,
+                error: failure,
+            })
             if (!continueonerror) break
         }
     }
@@ -209,12 +230,3 @@ export async function summarizesmigrationstatus(mongoose) {
         pending,
     }
 }
-
-
-
-
-
-
-
-
-

@@ -1,0 +1,12 @@
+.git
+.github
+.gitlab
+.idea
+node_modules
+web/node_modules
+web/dist
+data
+LICENSE*.md
+README.md
+planning
+*.log

@@ -59,9 +59,3 @@ main().catch((error) => {
     console.error('Migration CLI failed:', error)
     process.exitCode = 1
 })
-
-
-
-
-
-

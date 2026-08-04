@@ -38,6 +38,3 @@ export default function createMigrationRegistrySchema(mongoose) {
     schema.index({ status: 1, completedat: -1 })
     return schema
 }
-
-
-

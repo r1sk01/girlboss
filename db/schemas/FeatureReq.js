@@ -10,4 +10,3 @@ export default function createFeatureReqSchema(mongoose) {
     schema.index({ reqid: 1 }, { unique: true })
     return schema
 }
-

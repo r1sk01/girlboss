@@ -79,7 +79,13 @@ async function buildindexes(mongooseRunner = mongoose) {
 
 const pendingcallbacks = new Map()
 
-function pathallowed(path, requiredlevel, accesslist) {
+/**
+ * @param {string} path dotted property path being accessed
+ * @param {'r'|'rw'} requiredlevel
+ * @param {{ path: string, level?: 'r'|'rw' }[]} accesslist grants approved by the user
+ * @returns {boolean}
+ */
+export function pathallowed(path, requiredlevel, accesslist) {
     for (const entry of accesslist) {
         const base = entry.path
         const level = entry.level || 'r'
@@ -91,11 +97,11 @@ function pathallowed(path, requiredlevel, accesslist) {
     return false
 }
 
-function deepget(obj, path) {
+export function deepget(obj, path) {
     return path.split('.').reduce((cur, k) => (cur != null ? cur[k] : undefined), obj)
 }
 
-function deepset(obj, path, value) {
+export function deepset(obj, path, value) {
     const keys = path.split('.')
     let cur = obj
     for (let i = 0; i < keys.length - 1; i++) {

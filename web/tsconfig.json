@@ -6,6 +6,7 @@
         "module": "Preserve",
         "allowImportingTsExtensions": true,
         "verbatimModuleSyntax": true,
+        "skipLibCheck": true,
         "noEmit": true,
         "paths": {
             "@/*": ["./src/*"]

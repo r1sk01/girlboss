@@ -1,6 +1,7 @@
 import fs from 'fs'
 import { parse as parseJsonc } from 'jsonc-parser'
 import * as signalhandler from './signalhandler.js'
+import { escapereg, parsecommand as parsecommandwithprefix } from './parser.js'
 import Redis from 'ioredis'
 /** @typedef {import('../types/botconfig.types.js').BotConfig} BotConfig */
 
@@ -11,50 +12,37 @@ const botname = config.botname || 'TritiumBot'
 const phonenumber = config.phonenumber
 const managedaccount = config.managedaccount
 const rediscon = config.rediscon || 'redis://localhost:6379'
-config = undefined
-function escapereg(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const commandratelimit = {
+    limit: config.commandratelimit?.limit ?? 20,
+    windowseconds: config.commandratelimit?.windowseconds ?? 60,
 }
-function parsecommand(message) {
-    if (!message) return null
-    const reg = new RegExp(`^(${escapereg(prefix)}\\S+)\\s*([\\s\\S]*)$`, 'i')
-    const match = message.match(reg)
-    if (!match) return null
-    const command = match[1].trim()
-    const rest = match[2].trim()
-    if (!rest) return [command]
-    const tokens = []
-    let current = ''
-    let inQuote = false
-    let quoteChar = null
-    for (let i = 0; i < rest.length; i++) {
-        const c = rest[i]
-        if (c === '"' || c === "'") {
-            if (!inQuote) {
-                inQuote = true
-                quoteChar = c
-                continue
-            } else if (c === quoteChar) {
-                inQuote = false
-                quoteChar = null
-                continue
+config = undefined
+
+// The blacklist is editable while the bot runs, so it is re-read from disk when
+// config.jsonc changes rather than being frozen at import time.
+let blacklistcache = { mtimems: -1, entries: [] }
+function blacklist() {
+    try {
+        const { mtimeMs } = fs.statSync('config.jsonc')
+        if (mtimeMs !== blacklistcache.mtimems) {
+            const parsed = parseJsonc(fs.readFileSync('config.jsonc', 'utf8'))
+            blacklistcache = {
+                mtimems: mtimeMs,
+                entries: Array.isArray(parsed?.blacklist) ? parsed.blacklist : [],
             }
         }
-        if (c === '\\' && i + 1 < rest.length) {
-            current += rest[++i]
-            continue
-        }
-        if (c === ' ' && !inQuote) {
-            if (current) {
-                tokens.push(current)
-                current = ''
-            }
-            continue
-        }
-        current += c
+    } catch (err) {
+        console.error('Failed to read blacklist from config.jsonc:', err?.message || err)
     }
-    if (current) tokens.push(current)
-    return [command, ...tokens]
+    return blacklistcache.entries
+}
+
+/**
+ * @param {string} message
+ * @returns {string[]|null}
+ */
+function parsecommand(message) {
+    return parsecommandwithprefix(message, prefix)
 }
 const { sendresponse, sendmessage, getcontacts, getgroups } = signalhandler
 
@@ -101,6 +89,8 @@ export {
     botname,
     phonenumber,
     managedaccount,
+    blacklist,
+    commandratelimit,
     sendresponse,
     sendmessage,
     getcontacts,

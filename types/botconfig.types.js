@@ -2,6 +2,10 @@
 /**
  * Shared config shape for values loaded from `config.jsonc`.
  *
+ * @typedef {Object} RateLimitConfig
+ * @property {number=} limit
+ * @property {number=} windowseconds
+ *
  * @typedef {Object} BotConfig
  * @property {string} phonenumber
  * @property {string} socketpath
@@ -17,9 +21,11 @@
  * @property {string=} mongoosecon
  * @property {string=} axiomtoken
  * @property {string[]=} blacklist
+ * @property {number=} authkeyttldays
+ * @property {RateLimitConfig=} commandratelimit
+ * @property {RateLimitConfig=} loginratelimit
+ * @property {RateLimitConfig=} webhookratelimit
  */
 
 // Keep this file as a module so JSDoc import() type references resolve reliably.
 export const __botConfigTypes = true
-
-

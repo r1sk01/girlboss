@@ -106,7 +106,7 @@ function setupbotprofile() {
     startconn(client, () => {
         const tid = Math.floor(Math.random() * 1024) + 1
         const id = tid.toString()
-        let json = {
+        const json = {
             jsonrpc: '2.0',
             id,
             method: 'updateProfile',
@@ -126,8 +126,7 @@ function setupbotprofile() {
         if (botavatar && fs.existsSync(botavatar)) {
             json.params.avatar = botavatar
         }
-        json = JSON.stringify(json)
-        client.write(json)
+        client.write(JSON.stringify(json))
         client.end()
     })
     client.on('error', (error) => {

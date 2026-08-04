@@ -7,5 +7,3 @@ export default function createStateSchema(mongoose) {
         updatedat: Number,
     })
 }
-
-

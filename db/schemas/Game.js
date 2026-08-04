@@ -2,6 +2,7 @@ export const modelName = 'Game'
 
 export default function createGameSchema(mongoose) {
     const schema = new mongoose.Schema({
+        gameid: String,
         hostid: String,
         players: [Object],
         status: String,
@@ -12,4 +13,3 @@ export default function createGameSchema(mongoose) {
     schema.index({ players: 1 })
     return schema
 }
-

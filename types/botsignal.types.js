@@ -19,6 +19,3 @@
 
 // noinspection JSUnusedGlobalSymbols
 export const __botSignalTypes = true
-
-
-

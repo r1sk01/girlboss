@@ -9,4 +9,3 @@ export default function createWebhookSchema(mongoose) {
     schema.index({ userid: 1 }, { unique: true })
     return schema
 }
-

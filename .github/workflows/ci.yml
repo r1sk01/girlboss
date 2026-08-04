@@ -1,0 +1,56 @@
+name: CI
+
+on:
+    push:
+        branches: [master, main]
+    pull_request:
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    bot:
+        name: Bot
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+            - run: bun install --frozen-lockfile
+            - name: Lint
+              run: bun run lint
+            - name: Check formatting
+              run: bun run format:check
+            - name: Typecheck
+              run: bun run typecheck
+            - name: Test
+              run: bun test
+
+    web:
+        name: Web
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: web
+        steps:
+            - uses: actions/checkout@v6
+            - uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+            - run: bun install --frozen-lockfile
+            - name: Typecheck
+              run: bun run typecheck
+            - name: Build
+              run: bun run build
+
+    docker:
+        name: Docker
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v6
+            - name: Validate compose file
+              run: docker compose config --quiet
+            - name: Build images
+              run: docker compose build tritium web

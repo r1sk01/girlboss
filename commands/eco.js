@@ -238,7 +238,7 @@ export default {
                     await tu.save()
                     sendmessage(
                         `You have received E${amount} from ${user.userid}. Your new balance is E${tu.properties.eco.balance}.`,
-                        tui,
+                        tu.userid,
                         phonenumber
                     )
                     await sendresponse(

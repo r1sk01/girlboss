@@ -2,13 +2,30 @@ import { serve } from 'bun'
 import index from './index.html'
 import { parse as parseJsonc } from 'jsonc-parser'
 import fs from 'fs'
+import path from 'path'
+import { fileURLToPath } from 'url'
 import { exportmodels } from '../../core/mongoose.js'
+import { authkeyexpired, hashauthkey, randomid, verifyauthkey } from '../../core/secrets.js'
+import { consumeratelimit } from '../../core/ratelimit.js'
 import Redis from 'ioredis'
 
-let config = parseJsonc(fs.readFileSync('../config.jsonc', 'utf8'))
+const configpath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../config.jsonc')
+let config = parseJsonc(fs.readFileSync(configpath, 'utf8'))
 const mongoosecon = config.mongoosecon
 const rediscon = config.rediscon || 'redis://localhost:6379'
+const authkeyttldays = config.authkeyttldays ?? 90
+const loginratelimit = {
+    limit: config.loginratelimit?.limit ?? 10,
+    windowseconds: config.loginratelimit?.windowseconds ?? 300,
+}
+const webhookratelimit = {
+    limit: config.webhookratelimit?.limit ?? 30,
+    windowseconds: config.webhookratelimit?.windowseconds ?? 60,
+}
 config = undefined
+
+const webhookmaxnamelength = 64
+const webhookmaxcontentlength = 2000
 
 const mongoosePromise = exportmodels(mongoosecon)
 const redis = new Redis(rediscon)
@@ -29,6 +46,8 @@ type WebhookBody = {
     name: string
     content: string
 }
+
+type RateLimited = { response: Response } | null
 
 type LoginBody = {
     authkey?: unknown
@@ -52,7 +71,34 @@ function formatError(err: unknown): string {
 function isWebhookBody(body: unknown): body is WebhookBody {
     if (typeof body !== 'object' || body === null) return false
     const candidate = body as Record<string, unknown>
-    return typeof candidate.name === 'string' && typeof candidate.content === 'string'
+    return (
+        typeof candidate.name === 'string' &&
+        typeof candidate.content === 'string' &&
+        candidate.name.length > 0 &&
+        candidate.name.length <= webhookmaxnamelength &&
+        candidate.content.length > 0 &&
+        candidate.content.length <= webhookmaxcontentlength
+    )
+}
+
+async function enforceratelimit(
+    key: string,
+    { limit, windowseconds }: { limit: number; windowseconds: number }
+): Promise<RateLimited> {
+    const quota = await consumeratelimit(redis, key, limit, windowseconds)
+    if (quota.allowed) return null
+    return {
+        response: Response.json(
+            { error: 'Too many requests' },
+            { status: 429, headers: { 'Retry-After': String(quota.retryafter) } }
+        ),
+    }
+}
+
+function clientkey(req: Request, server: { requestIP: (req: Request) => { address: string } | null }): string {
+    const forwarded = req.headers.get('X-Forwarded-For')
+    if (forwarded) return forwarded.split(',')[0]!.trim()
+    return server.requestIP(req)?.address ?? 'unknown'
 }
 
 function isLoginBody(body: unknown): body is LoginBody {
@@ -135,21 +181,30 @@ async function checkauthvalidity(authkey: string) {
         const sidbuf = cbuf.subarray(0, -128)
         const sid = sidbuf.toString('utf8')
         const user = await User.findOne({ userid: sid })
-        if (!user || !user.properties?.authkey) {
+        const stored = user?.properties?.authkey
+        if (!user || !stored) {
             return { failed: false, attestation: false, message: 'AuthKey is invalid' }
         }
-        if (!user.properties || !user.properties.eco) {
-            user.properties = user.properties || {}
+        const { valid, needsupgrade } = verifyauthkey(akbuf, stored)
+        if (!valid) {
+            return { failed: false, attestation: false, message: 'AuthKey is invalid' }
+        }
+        if (authkeyexpired(stored, authkeyttldays)) {
+            return { failed: false, attestation: false, message: 'AuthKey has expired' }
+        }
+        if (needsupgrade) {
+            // Retire the plaintext copy the moment its owner proves ownership.
+            user.properties.authkey = { hash: hashauthkey(akbuf), createdat: stored.createdat ?? Date.now() }
+            user.markModified('properties')
+        }
+        if (!user.properties.eco) {
             user.properties.eco = { balance: 0 }
             user.markModified('properties')
+        }
+        if (user.isModified('properties')) {
             await user.save()
         }
-        const sakbuf = Buffer.from(user.properties.authkey.key)
-        if (!akbuf.equals(sakbuf)) {
-            return { failed: false, attestation: false, message: 'AuthKey is invalid' }
-        } else {
-            return { failed: false, attestation: true, message: 'AuthKey is valid', user }
-        }
+        return { failed: false, attestation: true, message: 'AuthKey is valid', user }
     } catch (err) {
         await handleerr0r(err, 'checkauthvalidity')
         return { failed: true, message: 'Internal Server Error' }
@@ -163,7 +218,9 @@ const server = serve({
         '/*': (_req) => Response.redirect('/'),
 
         '/api/login': {
-            async POST(req) {
+            async POST(req, server) {
+                const limited = await enforceratelimit(`login:${clientkey(req, server)}`, loginratelimit)
+                if (limited) return limited.response
                 const body: unknown = await req.json()
                 if (!isLoginBody(body) || typeof body.authkey !== 'string') {
                     return Response.json({ error: 'Invalid AuthKey' }, { status: 400 })
@@ -219,13 +276,14 @@ const server = serve({
                         { status: 500 }
                     )
                 } else if (!validity.failed && validity.attestation) {
+                    const { authkey: _authkey, ...properties } = validity.user.properties ?? {}
                     return Response.json(
                         {
                             message: 'AuthKey is valid',
                             user: {
                                 userid: validity.user.userid,
                                 username: validity.user.username,
-                                properties: validity.user.properties,
+                                properties,
                             },
                         },
                         { status: 200 }
@@ -392,6 +450,8 @@ const server = serve({
                     if (!hook) {
                         return Response.json({ error: 'No webhook ID provided' }, { status: 400 })
                     }
+                    const limited = await enforceratelimit(`webhook:${hook}`, webhookratelimit)
+                    if (limited) return limited.response
                     const Webhook = mongoose.model('Webhook')
                     const webhook = await Webhook.findById(hook)
                     if (!webhook) {
@@ -411,7 +471,7 @@ const server = serve({
                     if (!isWebhookBody(body)) {
                         return Response.json(
                             {
-                                error: 'Invalid payload. Required: { name: string, content: string }',
+                                error: `Invalid payload. Required: { name: string (1-${webhookmaxnamelength} chars), content: string (1-${webhookmaxcontentlength} chars) }`,
                             },
                             { status: 400 }
                         )
@@ -461,10 +521,10 @@ const server = serve({
                             )
                         }
                         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-                        const deviceid = Array.from(
-                            { length: 8 },
-                            (_, _i) => chars[Math.floor(Math.random() * chars.length)]
-                        ).reduce((a, c, i) => a + (i === 4 ? '-' : '') + c, '')
+                        const deviceid = Array.from(randomid(8, chars)).reduce(
+                            (a, c, i) => a + (i === 4 ? '-' : '') + c,
+                            ''
+                        )
                         await redis.set(
                             `sso:${deviceid}`,
                             JSON.stringify({ providerid: result._id.toString(), scopes }),
