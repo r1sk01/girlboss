@@ -5,6 +5,29 @@ import dns from 'dns/promises'
 import crypto from 'crypto'
 import { mongoose, redis, prefix, sendresponse, parsecommand } from '../core/modulecontext.js'
 
+const ssoScopeDescriptions = {
+    accesslevel: 'Retrieve your user access level',
+}
+
+function parseSSORequest(value) {
+    try {
+        const parsed = JSON.parse(value)
+        if (parsed && typeof parsed.providerid === 'string' && Array.isArray(parsed.scopes)) {
+            return {
+                providerid: parsed.providerid,
+                scopes: parsed.scopes.filter((scope) => typeof scope === 'string'),
+            }
+        }
+    } catch {
+        // Legacy SSO requests stored only the provider ID at sso:<deviceId>.
+    }
+    return { providerid: value, scopes: [] }
+}
+
+function hashSSOUserId(providerid, userid) {
+    return crypto.createHash('sha512').update(`${providerid}:${userid}`).digest('hex')
+}
+
 const utils = {
     section: 'utils',
     user: true,
@@ -262,8 +285,9 @@ const utils = {
                     } else if (id) {
                         const result = await redis.get(`sso:${id}`)
                         if (result) {
+                            const request = parseSSORequest(result)
                             const SSOProvider = await mongoose.model('SSOProvider')
-                            const provider = await SSOProvider.findOne({ _id: result })
+                            const provider = await SSOProvider.findOne({ _id: request.providerid })
                             if (!provider) {
                                 await sendresponse(
                                     "It seems you have provided an invalid ID, please double check that the ID you provided is correct and hasn't expired (30 minute expiry).",
@@ -274,10 +298,18 @@ const utils = {
                                 return
                             }
                             if (match[2] && match[2].toLowerCase().trim() === 'true') {
+                                const payload = {
+                                    userid: hashSSOUserId(provider._id, envelope.sourceUuid),
+                                }
+                                if (request.scopes.includes('accesslevel')) {
+                                    const User = mongoose.model('User')
+                                    const user = await User.findOne({ userid: envelope.sourceUuid })
+                                    payload.accesslevel = user?.accesslevel ?? 0
+                                }
                                 await redis.del(`sso:${id}`)
                                 await redis.set(
                                     `sso-${provider._id}:${id}`,
-                                    `${crypto.createHash('sha512').update(`${provider._id}:${envelope.sourceUuid}`).digest('hex')}`,
+                                    JSON.stringify(payload),
                                     'EXAT',
                                     Math.floor(Date.now() / 1000) + 600
                                 )
@@ -303,8 +335,11 @@ const utils = {
                                     'Inject you with the opposite of your preferred sex hormone',
                                     'Double the money in your bank account',
                                 ]
+                                const scopeLines = request.scopes
+                                    .map((scope) => `✓ ${ssoScopeDescriptions[scope] || `Use the ${scope} scope`}`)
+                                    .join('\n')
                                 await sendresponse(
-                                    `${provider.name} is requesting authorisation (owned by ${provider.owner}).\nThis will give the provider the ability to:\n✓ Retrieve your Signal ID (hashed with SHA512)\n✓ Log you into your associated account\n✖ ${messages[Math.floor(Math.random() * messages.length)]}\n\nIf these permissions seem all good to you, run '-sso ${id} true' to authorise this app.`,
+                                    `${provider.name} is requesting authorisation (owned by ${provider.owner}).\nThis will give the provider the ability to:\n✓ Retrieve your Signal ID (hashed with SHA512)\n✓ Log you into your associated account${scopeLines ? `\n${scopeLines}` : ''}\n✖ ${messages[Math.floor(Math.random() * messages.length)]}\n\nIf these permissions seem all good to you, run '-sso ${id} true' to authorise this app.`,
                                     envelope,
                                     `${prefix}sso`,
                                     false
@@ -333,4 +368,3 @@ const utils = {
 }
 
 export default utils
-

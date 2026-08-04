@@ -376,7 +376,10 @@ export default {
                         await sendresponse(`User ${tui} not found.`, envelope, `${prefix}delprop`, true)
                         return
                     }
-                    if (!userobject.properties || !Object.prototype.hasOwnProperty.call(userobject.properties, property)) {
+                    if (
+                        !userobject.properties ||
+                        !Object.prototype.hasOwnProperty.call(userobject.properties, property)
+                    ) {
                         await sendresponse(
                             `Property "${property}" not found for user ${tui}.`,
                             envelope,
@@ -791,7 +794,9 @@ export default {
                             `Pending: ${summary.totals.pending}`,
                             `Failed: ${summary.totals.failed}`,
                             `Last completed: ${last}`,
-                            failedlines.length > 0 ? `Recent failures:\n${failedlines.join('\n')}` : 'Recent failures: none',
+                            failedlines.length > 0
+                                ? `Recent failures:\n${failedlines.join('\n')}`
+                                : 'Recent failures: none',
                         ].join('\n')
                         await sendresponse(output, envelope, `${prefix}migration status`, false)
                         return
@@ -878,7 +883,12 @@ export default {
                     if (subcommand === 'logs') {
                         const rows = await MigrationRegistry.find({ status: 'failed' }).sort({ failedat: -1 }).limit(5)
                         if (rows.length === 0) {
-                            await sendresponse('No failed migration logs found.', envelope, `${prefix}migration logs`, false)
+                            await sendresponse(
+                                'No failed migration logs found.',
+                                envelope,
+                                `${prefix}migration logs`,
+                                false
+                            )
                             return
                         }
                         const logs = rows.map((entry) => {
@@ -913,14 +923,31 @@ export default {
         },
         mksso: {
             description: 'Creates an SSO provider',
-            arguments: ['name', 'owner'],
+            arguments: ['name', 'owner', 'scopes'],
             execute: async (envelope, message) => {
                 try {
                     const matches = [...message.matchAll(/"([^"]*)"/g)]
                     const SSOProvider = mongoose.model('SSOProvider')
                     if (!matches[0]?.[1] || !matches[1]?.[1]) {
                         await sendresponse(
-                            'Invalid arguments.\nYou need to specify a name and owner of the provider:\n-mksso "name" "owner"',
+                            'Invalid arguments.\nYou need to specify a name and owner of the provider, with optional comma-separated scopes:\n-mksso "name" "owner" "accesslevel"',
+                            envelope,
+                            `${prefix}mksso`,
+                            true
+                        )
+                        return
+                    }
+                    const allowedScopes = ['accesslevel']
+                    const scopes = matches[2]?.[1]
+                        ? matches[2][1]
+                              .split(',')
+                              .map((scope) => scope.trim().toLowerCase())
+                              .filter(Boolean)
+                        : []
+                    const invalidScopes = scopes.filter((scope) => !allowedScopes.includes(scope))
+                    if (invalidScopes.length > 0) {
+                        await sendresponse(
+                            `Invalid SSO scope(s): ${invalidScopes.join(', ')}\nAllowed scopes: ${allowedScopes.join(', ')}`,
                             envelope,
                             `${prefix}mksso`,
                             true
@@ -936,10 +963,11 @@ export default {
                         name: matches[0][1],
                         owner: matches[1][1],
                         key,
+                        scopes,
                     })
                     await provider.save()
                     await sendresponse(
-                        `SSO Provider "${matches[0][1]}" created successfully (with an owner of ${matches[1][1]}).\nSSO Key: ${key}`,
+                        `SSO Provider "${matches[0][1]}" created successfully (with an owner of ${matches[1][1]}).\nScopes: ${scopes.length > 0 ? scopes.join(', ') : 'none'}\nSSO Key: ${key}`,
                         envelope,
                         `${prefix}mksso`,
                         false

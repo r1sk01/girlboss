@@ -34,6 +34,17 @@ type LoginBody = {
     authkey?: unknown
 }
 
+type SSORequest = {
+    providerid: string
+    scopes: string[]
+}
+
+const ssoScopes = {
+    accesslevel: 'Retrieve your user access level',
+}
+
+const allowedSSOScopes = Object.keys(ssoScopes)
+
 function formatError(err: unknown): string {
     return err instanceof Error ? err.message : String(err)
 }
@@ -46,6 +57,40 @@ function isWebhookBody(body: unknown): body is WebhookBody {
 
 function isLoginBody(body: unknown): body is LoginBody {
     return typeof body === 'object' && body !== null && 'authkey' in body
+}
+
+function getProviderScopes(provider: { scopes?: unknown }): string[] {
+    if (!Array.isArray(provider.scopes)) return []
+    return provider.scopes.filter(
+        (scope): scope is string => typeof scope === 'string' && allowedSSOScopes.includes(scope)
+    )
+}
+
+function parseRequestedSSOScopes(req: Request, provider: { scopes?: unknown }): string[] | null {
+    const providerScopes = getProviderScopes(provider)
+    const url = new URL(req.url)
+    const requestedScopes = (url.searchParams.get('scopes') || url.searchParams.get('scope'))
+        ?.split(',')
+        .map((scope) => scope.trim().toLowerCase())
+        .filter(Boolean)
+
+    if (!requestedScopes) return providerScopes
+    return requestedScopes.every((scope) => providerScopes.includes(scope)) ? requestedScopes : null
+}
+
+function parseSSORequest(value: string): SSORequest {
+    try {
+        const parsed = JSON.parse(value) as Partial<SSORequest>
+        if (typeof parsed.providerid === 'string' && Array.isArray(parsed.scopes)) {
+            return {
+                providerid: parsed.providerid,
+                scopes: parsed.scopes.filter((scope): scope is string => typeof scope === 'string'),
+            }
+        }
+    } catch {
+        // Legacy SSO requests stored only the provider ID at sso:<deviceId>.
+    }
+    return { providerid: value, scopes: [] }
 }
 
 async function handleerr0r(err: unknown, module: string) {
@@ -405,12 +450,27 @@ const server = serve({
                             { status: 403 }
                         )
                     } else {
+                        const scopes = parseRequestedSSOScopes(req, result)
+                        if (!scopes) {
+                            return Response.json(
+                                {
+                                    error: 'One or more requested scopes are not allowed for this provider',
+                                    allowedScopes: getProviderScopes(result),
+                                },
+                                { status: 403 }
+                            )
+                        }
                         const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
                         const deviceid = Array.from(
                             { length: 8 },
                             (_, _i) => chars[Math.floor(Math.random() * chars.length)]
                         ).reduce((a, c, i) => a + (i === 4 ? '-' : '') + c, '')
-                        await redis.set(`sso:${deviceid}`, result._id, 'EXAT', Math.floor(Date.now() / 1000) + 1800)
+                        await redis.set(
+                            `sso:${deviceid}`,
+                            JSON.stringify({ providerid: result._id.toString(), scopes }),
+                            'EXAT',
+                            Math.floor(Date.now() / 1000) + 1800
+                        )
                         return new Response(`${deviceid}`, { status: 200 })
                     }
                 } catch (err) {
@@ -437,14 +497,13 @@ const server = serve({
                         )
                     } else {
                         if (req.body) {
-                            const deviceId = await req.text()
-                            const userid = await redis.get(`sso:${deviceId}`)
-                            if (!userid) {
-                                return new Response('Invalid or expired device ID', { status: 404 })
-                            } else {
-                                await redis.del(`sso:${deviceId}`)
-                                return new Response(userid, { status: 200 })
+                            const deviceId = (await req.text()).trim().toUpperCase()
+                            const accepted = await redis.get(`sso-${result._id}:${deviceId}`)
+                            if (!accepted) {
+                                return new Response('Invalid, expired, or unauthorised device ID', { status: 404 })
                             }
+                            await redis.del(`sso-${result._id}:${deviceId}`)
+                            return Response.json(JSON.parse(accepted) as Record<string, unknown>, { status: 200 })
                         } else {
                             return new Response('No device identifier provided in request body', { status: 400 })
                         }

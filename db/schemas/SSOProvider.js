@@ -6,9 +6,12 @@ export default function createSSOProviderSchema(mongoose) {
         name: String,
         owner: String,
         key: String,
+        scopes: {
+            type: [String],
+            default: [],
+        },
     })
 
     schema.index({ key: 1 }, { unique: true })
     return schema
 }
-
